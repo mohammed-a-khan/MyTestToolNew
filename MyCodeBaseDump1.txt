@@ -2110,7 +2110,7 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
     } else if (!isRecording && injected) {
       removeRecordingScript();
     }
-  }, [isRecording, iframeRef.current, injected]);
+  }, [isRecording, injected]);
 
   // Load a URL in the iframe
   const loadUrl = (url: string) => {
@@ -2125,7 +2125,8 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
       setCurrentUrl(urlWithProtocol);
     } catch (err) {
       console.error('Error loading URL:', err);
-      setError(`Failed to load URL: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load URL: ${errorMessage}`);
       setIsLoading(false);
     }
   };
@@ -2148,7 +2149,8 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
       }
     } catch (err) {
       console.error('Error accessing iframe content:', err);
-      setError(`Cannot access iframe content: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Cannot access iframe content: ${errorMessage}`);
     }
   };
 
@@ -2426,7 +2428,8 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
       console.log('Recording script injected');
     } catch (err) {
       console.error('Error injecting recording script:', err);
-      setError(`Cannot inject recording script: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Cannot inject recording script: ${errorMessage}`);
     }
   };
 
@@ -2437,7 +2440,7 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
       if (!iframe || !iframe.contentWindow) return;
 
       // Call cleanup function
-      if (iframe.contentWindow.removeCSTestForgeRecorder) {
+      if (typeof iframe.contentWindow.removeCSTestForgeRecorder === 'function') {
         iframe.contentWindow.removeCSTestForgeRecorder();
       }
 
@@ -2558,7 +2561,6 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
 };
 
 export default BrowserFrame;
-
 
 // cstestforge/frontend/src/components/recorder/ActionToolbar.tsx
 
