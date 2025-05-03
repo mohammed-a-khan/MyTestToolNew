@@ -1,0 +1,145 @@
+// src/types/recorder.d.ts
+
+export interface RecordingSettings {
+  targetUrl: string;
+  browser: Browser;
+  language: ProgrammingLanguage;
+  framework: TestingFramework;
+  testType: TestType;
+  aiEnabled: boolean;
+  smartWaitEnabled: boolean;
+}
+
+export enum Browser {
+  CHROME = 'chrome',
+  FIREFOX = 'firefox',
+  EDGE = 'edge',
+  SAFARI = 'safari'
+}
+
+export enum ProgrammingLanguage {
+  JAVA = 'java',
+  TYPESCRIPT = 'typescript'
+}
+
+export enum TestingFramework {
+  SELENIUM = 'selenium',
+  PLAYWRIGHT = 'playwright'
+}
+
+export enum TestType {
+  TESTNG = 'testng',
+  BDD = 'bdd'
+}
+
+export enum ActionType {
+  CLICK = 'click',
+  TYPE = 'type',
+  SELECT = 'select',
+  ASSERT = 'assert',
+  HOVER = 'hover',
+  DRAG_DROP = 'dragDrop',
+  RIGHT_CLICK = 'rightClick',
+  DOUBLE_CLICK = 'doubleClick',
+  SCROLL = 'scroll',
+  WAIT = 'wait',
+  CONDITION = 'condition',
+  LOOP = 'loop',
+  CUSTOM_CODE = 'customCode',
+  NAVIGATE = 'navigate',
+  PAGE_REFRESH = 'pageRefresh',
+  SWITCH_TAB = 'switchTab',
+  SCREENSHOT = 'screenshot',
+  FILE_UPLOAD = 'fileUpload'
+}
+
+export interface ElementLocator {
+  id?: string;
+  xpath?: string;
+  css?: string;
+  name?: string;
+  className?: string;
+  linkText?: string;
+  tagName?: string;
+  aiGeneratedLocator?: string;
+  locatorConfidence: number;
+  alternativeLocators: string[];
+}
+
+export interface RecordedAction {
+  id: string;
+  type: ActionType;
+  timestamp: number;
+  target?: ElementLocator;
+  value?: string;
+  description: string;
+  screenshot?: string;
+  htmlSnapshot?: string;
+  conditionalLogic?: ConditionalLogic;
+  loopLogic?: LoopLogic;
+  customCode?: string;
+  pageInfo: PageInfo;
+}
+
+export interface ConditionalLogic {
+  condition: string;
+  ifActions: string[];
+  elseActions: string[];
+}
+
+export interface LoopLogic {
+  loopType: 'for' | 'while' | 'forEach';
+  condition: string;
+  loopActions: string[];
+}
+
+export interface PageInfo {
+  title: string;
+  url: string;
+  domSnapshot?: string;
+}
+
+export interface RecordingSession {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  settings: RecordingSettings;
+  actions: RecordedAction[];
+  status: 'recording' | 'paused' | 'stopped';
+  duration: number;
+}
+
+export interface GeneratedTest {
+  id: string;
+  name: string;
+  sessionId: string;
+  code: string;
+  language: ProgrammingLanguage;
+  framework: TestingFramework;
+  testType: TestType;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RecorderState {
+  currentSession: RecordingSession | null;
+  recordedSessions: RecordingSession[];
+  generatedTests: GeneratedTest[];
+  isRecording: boolean;
+  isPaused: boolean;
+  currentUrl: string;
+  error: string | null;
+}
+
+export interface IRecorderService {
+  startRecording(settings: RecordingSettings): Promise<RecordingSession>;
+  stopRecording(sessionId: string): Promise<RecordingSession>;
+  pauseRecording(sessionId: string): Promise<RecordingSession>;
+  resumeRecording(sessionId: string): Promise<RecordingSession>;
+  addAction(sessionId: string, action: RecordedAction): Promise<RecordingSession>;
+  generateTest(sessionId: string): Promise<GeneratedTest>;
+  saveTest(test: GeneratedTest): Promise<boolean>;
+  runTest(testId: string): Promise<boolean>;
+}
