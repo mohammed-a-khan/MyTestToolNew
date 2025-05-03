@@ -1,0 +1,2674 @@
+package com.cstestforge.backend.service.ai;
+
+import com.cstestforge.backend.model.RecordingEvent;
+import com.cstestforge.backend.model.RecordingSession;
+import com.cstestforge.backend.service.config.ConfigurationManager;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * Service for AI-based element recognition
+ */
+@Service
+public class ElementRecognitionService {
+    private static final Logger logger = LoggerFactory.getLogger(ElementRecognitionService.class);
+    
+    @Autowired
+    private ConfigurationManager configManager;
+    
+    @Value("${cstestforge.ai.recognition.dictionary.path:./dictionary}")
+    private String dictionaryPath;
+    
+    // Key element type dictionaries
+    private final Map<String, Set<String>> elementTypeDictionaries = new HashMap<>();
+    
+    // Common visual elements
+    private final Set<String> buttonTerms = new HashSet<>();
+    private final Set<String> linkTerms = new HashSet<>();
+    private final Set<String> inputTerms = new HashSet<>();
+    private final Set<String> menuTerms = new HashSet<>();
+    private final Set<String> headerTerms = new HashSet<>();
+    
+    // Common action verbs
+    private final Set<String> actionVerbs = new HashSet<>();
+    
+    // Common UI patterns
+    private final Map<String, Pattern> uiPatterns = new HashMap<>();
+    
+    // Element score cache
+    private final Map<String, Map<String, Double>> elementScoreCache = new HashMap<>();
+    
+    // Historical elements
+    private final Map<String, List<RecordingEvent.ElementInfo>> historicalElements = new HashMap<>();
+    
+    // Element frequency counter
+    private final Map<String, Integer> elementFrequency = new HashMap<>();
+    
+    @PostConstruct
+    public void init() {
+        loadDictionaries();
+        initializeUiPatterns();
+    }
+    
+    /**
+     * Initialize the service
+     */
+    public void initialize() {
+        logger.info("Initializing ElementRecognitionService");
+        
+        // Clear caches
+        elementScoreCache.clear();
+        historicalElements.clear();
+        elementFrequency.clear();
+    }
+    
+    /**
+     * Load dictionaries from files
+     */
+    private void loadDictionaries() {
+        try {
+            // Create directories if they don't exist
+            Files.createDirectories(Paths.get(dictionaryPath));
+            
+            // Load button terms
+            buttonTerms.addAll(loadDictionaryFile("buttons.txt"));
+            
+            // Load link terms
+            linkTerms.addAll(loadDictionaryFile("links.txt"));
+            
+            // Load input terms
+            inputTerms.addAll(loadDictionaryFile("inputs.txt"));
+            
+            // Load menu terms
+            menuTerms.addAll(loadDictionaryFile("menus.txt"));
+            
+            // Load header terms
+            headerTerms.addAll(loadDictionaryFile("headers.txt"));
+            
+            // Load action verbs
+            actionVerbs.addAll(loadDictionaryFile("actions.txt"));
+            
+            // Add to element type dictionaries
+            elementTypeDictionaries.put("button", buttonTerms);
+            elementTypeDictionaries.put("link", linkTerms);
+            elementTypeDictionaries.put("input", inputTerms);
+            elementTypeDictionaries.put("menu", menuTerms);
+            elementTypeDictionaries.put("header", headerTerms);
+            
+            logger.info("Loaded dictionaries: buttons={}, links={}, inputs={}, menus={}, headers={}, actions={}",
+                buttonTerms.size(), linkTerms.size(), inputTerms.size(), menuTerms.size(), 
+                headerTerms.size(), actionVerbs.size());
+        } catch (Exception e) {
+            logger.error("Failed to load dictionaries", e);
+            
+            // Initialize with default values
+            initializeDefaultDictionaries();
+        }
+    }
+    
+    /**
+     * Load a dictionary file
+     */
+    private Set<String> loadDictionaryFile(String filename) {
+        Set<String> terms = new HashSet<>();
+        Path filePath = Paths.get(dictionaryPath, filename);
+        
+        // Create the file if it doesn't exist
+        if (!Files.exists(filePath)) {
+            try {
+                Files.createFile(filePath);
+            } catch (IOException e) {
+                logger.error("Failed to create dictionary file: {}", filename, e);
+                return terms;
+            }
+        }
+        
+        // Read the file
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath.toFile()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim().toLowerCase();
+                if (!line.isEmpty() && !line.startsWith("#")) {
+                    terms.add(line);
+                }
+            }
+        } catch (IOException e) {
+            logger.error("Failed to read dictionary file: {}", filename, e);
+        }
+        
+        return terms;
+    }
+    
+    /**
+     * Initialize default dictionaries if loading from files fails
+     */
+    private void initializeDefaultDictionaries() {
+        // Button terms
+        buttonTerms.addAll(Arrays.asList(
+            "submit", "save", "cancel", "ok", "yes", "no", "next", "previous", "back", "continue",
+            "add", "delete", "remove", "edit", "update", "create", "search", "login", "logout",
+            "register", "signup", "signin", "sign in", "sign up", "log in", "log out", "send",
+            "upload", "download", "apply", "reset", "clear", "close", "open", "accept", "reject"
+        ));
+        
+        // Link terms
+        linkTerms.addAll(Arrays.asList(
+            "more", "details", "read more", "learn more", "click here", "here", "link", "go to",
+            "visit", "view", "show", "see", "check", "explore", "discover", "browse", "find", 
+            "home", "about", "contact", "help", "faq", "support", "terms", "privacy", "policy",
+            "sitemap", "settings", "profile", "account", "dashboard", "admin", "cart", "checkout"
+        ));
+        
+        // Input terms
+        inputTerms.addAll(Arrays.asList(
+            "name", "email", "username", "password", "confirm", "address", "phone", "mobile",
+            "city", "state", "country", "zip", "postal", "code", "comments", "message", "feedback",
+            "search", "query", "subject", "title", "description", "date", "time", "datetime", 
+            "number", "amount", "quantity", "price", "cost", "weight", "height", "width", "size"
+        ));
+        
+        // Menu terms
+        menuTerms.addAll(Arrays.asList(
+            "menu", "navigation", "nav", "dropdown", "select", "options", "submenu", "submenus",
+            "navbar", "sidebar", "toolbar", "header", "footer", "main", "toggle", "open", "close"
+        ));
+        
+        // Header terms
+        headerTerms.addAll(Arrays.asList(
+            "header", "heading", "title", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article",
+            "main", "subtitle", "caption", "label", "head", "subheading", "subtitle"
+        ));
+        
+        // Action verbs
+        actionVerbs.addAll(Arrays.asList(
+            "click", "tap", "press", "touch", "hover", "submit", "enter", "input", "type", "select",
+            "choose", "pick", "check", "uncheck", "toggle", "switch", "drag", "drop", "scroll",
+            "swipe", "navigate", "go", "visit", "browse", "search", "find", "view", "see", "show",
+            "hide", "open", "close", "expand", "collapse", "enable", "disable", "activate"
+        ));
+        
+        // Add to element type dictionaries
+        elementTypeDictionaries.put("button", buttonTerms);
+        elementTypeDictionaries.put("link", linkTerms);
+        elementTypeDictionaries.put("input", inputTerms);
+        elementTypeDictionaries.put("menu", menuTerms);
+        elementTypeDictionaries.put("header", headerTerms);
+    }
+    
+    /**
+     * Initialize UI patterns
+     */
+    private void initializeUiPatterns() {
+        // Form field patterns
+        uiPatterns.put("emailField", Pattern.compile("email|e-mail|mail", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("passwordField", Pattern.compile("password|pass|pwd", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("usernameField", Pattern.compile("username|user|login|id", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("searchField", Pattern.compile("search|find|query|lookup", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("phoneField", Pattern.compile("phone|mobile|cell|tel", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("addressField", Pattern.compile("address|street|location", Pattern.CASE_INSENSITIVE));
+        
+        // Button patterns
+        uiPatterns.put("submitButton", Pattern.compile("submit|save|confirm|ok|done", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("cancelButton", Pattern.compile("cancel|back|return|abort", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("deleteButton", Pattern.compile("delete|remove|clear", Pattern.CASE_INSENSITIVE));
+        
+        // Navigation patterns
+        uiPatterns.put("navLink", Pattern.compile("home|about|contact|help|faq|support", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("pagination", Pattern.compile("next|prev|previous|page", Pattern.CASE_INSENSITIVE));
+        
+        // Component patterns
+        uiPatterns.put("dropdown", Pattern.compile("dropdown|select|menu|options", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("checkbox", Pattern.compile("check|agree|accept|terms", Pattern.CASE_INSENSITIVE));
+        uiPatterns.put("radioButton", Pattern.compile("option|select|choose|pick", Pattern.CASE_INSENSITIVE));
+    }
+    
+    /**
+     * Enhance locators with AI-based analysis
+     */
+    public List<RecordingEvent.LocatorInfo> enhanceLocators(RecordingEvent.ElementInfo element, 
+                                                           List<RecordingEvent.LocatorInfo> baseLocators, 
+                                                           RecordingSession session) {
+        if (element == null) {
+            return baseLocators;
+        }
+        
+        // Create a unique key for the element
+        String elementKey = createElementKey(element);
+        
+        // Check cache for this element
+        if (elementScoreCache.containsKey(elementKey)) {
+            Map<String, Double> scores = elementScoreCache.get(elementKey);
+            
+            // Use scores to sort and enhance locators
+            return enhanceLocatorsWithScores(baseLocators, scores);
+        }
+        
+        // Track this element in historical data
+        trackElement(element, session);
+        
+        // Calculate scores for different aspects of the element
+        Map<String, Double> scores = calculateElementScores(element, session);
+        
+        // Cache the scores
+        elementScoreCache.put(elementKey, scores);
+        
+        // Enhance locators based on scores
+        return enhanceLocatorsWithScores(baseLocators, scores);
+    }
+    
+    /**
+     * Create a unique key for an element
+     */
+    private String createElementKey(RecordingEvent.ElementInfo element) {
+        StringBuilder key = new StringBuilder();
+        
+        key.append(element.getTagName()).append("_");
+        
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            key.append("id_").append(element.getId()).append("_");
+        }
+        
+        if (element.getClassName() != null && !element.getClassName().isEmpty()) {
+            key.append("class_").append(element.getClassName()).append("_");
+        }
+        
+        if (element.getName() != null && !element.getName().isEmpty()) {
+            key.append("name_").append(element.getName()).append("_");
+        }
+        
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            // Use only first 20 chars of text to avoid giant keys
+            String text = element.getText();
+            if (text.length() > 20) {
+                text = text.substring(0, 20);
+            }
+            key.append("text_").append(text).append("_");
+        }
+        
+        // Add position info if available
+        if (element.getBounds() != null && !element.getBounds().isEmpty()) {
+            Object x = element.getBounds().get("x");
+            Object y = element.getBounds().get("y");
+            
+            if (x != null && y != null) {
+                key.append("pos_").append(x).append("_").append(y).append("_");
+            }
+        }
+        
+        return key.toString();
+    }
+    
+    /**
+     * Track an element in historical data
+     */
+    private void trackElement(RecordingEvent.ElementInfo element, RecordingSession session) {
+        // Determine element type
+        String elementType = determineElementType(element);
+        
+        if (elementType != null) {
+            // Add to historical elements
+            if (!historicalElements.containsKey(elementType)) {
+                historicalElements.put(elementType, new ArrayList<>());
+            }
+            historicalElements.get(elementType).add(element);
+            
+            // Update frequency counter
+            String elementKey = createElementKey(element);
+            elementFrequency.put(elementKey, elementFrequency.getOrDefault(elementKey, 0) + 1);
+        }
+    }
+    
+    /**
+     * Determine element type based on tag and attributes
+     */
+    private String determineElementType(RecordingEvent.ElementInfo element) {
+        if (element == null || element.getTagName() == null) {
+            return null;
+        }
+        
+        String tag = element.getTagName().toLowerCase();
+        
+        // Direct tag mapping
+        if (tag.equals("button") || tag.equals("input") && element.getType() != null && 
+            (element.getType().equals("button") || element.getType().equals("submit") || 
+             element.getType().equals("reset"))) {
+            return "button";
+        } else if (tag.equals("a")) {
+            return "link";
+        } else if (tag.equals("input") || tag.equals("textarea") || tag.equals("select")) {
+            return "input";
+        } else if (tag.equals("ul") || tag.equals("ol") || tag.equals("nav") || 
+                  tag.equals("menu") || tag.equals("select")) {
+            return "menu";
+        } else if (tag.equals("h1") || tag.equals("h2") || tag.equals("h3") || 
+                  tag.equals("h4") || tag.equals("h5") || tag.equals("h6") || 
+                  tag.equals("header")) {
+            return "header";
+        }
+        
+        // Check role attribute
+        String role = element.getAttributes() != null ? element.getAttributes().get("role") : null;
+        if (role != null) {
+            if (role.equals("button")) {
+                return "button";
+            } else if (role.equals("link")) {
+                return "link";
+            } else if (role.equals("textbox") || role.equals("combobox") || 
+                      role.equals("listbox") || role.equals("searchbox")) {
+                return "input";
+            } else if (role.equals("menu") || role.equals("menubar") || 
+                      role.equals("menuitem") || role.equals("navigation")) {
+                return "menu";
+            } else if (role.equals("heading") || role.equals("banner")) {
+                return "header";
+            }
+        }
+        
+        // Check text content for clues
+        String text = element.getText();
+        if (text != null && !text.isEmpty()) {
+            text = text.toLowerCase();
+            
+            // Check against dictionaries
+            for (Map.Entry<String, Set<String>> entry : elementTypeDictionaries.entrySet()) {
+                String dictType = entry.getKey();
+                Set<String> terms = entry.getValue();
+                
+                for (String term : terms) {
+                    if (text.contains(term)) {
+                        return dictType;
+                    }
+                }
+            }
+        }
+        
+        // Check class names for clues
+        String className = element.getClassName();
+        if (className != null && !className.isEmpty()) {
+            className = className.toLowerCase();
+            
+            if (className.contains("btn") || className.contains("button")) {
+                return "button";
+            } else if (className.contains("link")) {
+                return "link";
+            } else if (className.contains("input") || className.contains("field") || 
+                      className.contains("form-control") || className.contains("textarea")) {
+                return "input";
+            } else if (className.contains("menu") || className.contains("nav") || 
+                      className.contains("dropdown")) {
+                return "menu";
+            } else if (className.contains("header") || className.contains("heading") || 
+                      className.contains("title")) {
+                return "header";
+            }
+        }
+        
+        // Fall back to div with click handler
+        if (tag.equals("div") && element.getAttributes() != null && 
+            (element.getAttributes().containsKey("onclick") || 
+             element.getAttributes().containsKey("ng-click") || 
+             element.getAttributes().containsKey("v-on:click") || 
+             className != null && className.contains("clickable"))) {
+            return "button";
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Calculate scores for different aspects of an element
+     */
+    private Map<String, Double> calculateElementScores(RecordingEvent.ElementInfo element, 
+                                                      RecordingSession session) {
+        Map<String, Double> scores = new HashMap<>();
+        
+        // Base score
+        scores.put("base", 1.0);
+        
+        // Calculate semantic score
+        double semanticScore = calculateSemanticScore(element);
+        scores.put("semantic", semanticScore);
+        
+        // Calculate position score
+        double positionScore = calculatePositionScore(element);
+        scores.put("position", positionScore);
+        
+        // Calculate uniqueness score
+        double uniquenessScore = calculateUniquenessScore(element);
+        scores.put("uniqueness", uniquenessScore);
+        
+        // Calculate accessibility score
+        double accessibilityScore = calculateAccessibilityScore(element);
+        scores.put("accessibility", accessibilityScore);
+        
+        // Calculate stability score
+        double stabilityScore = calculateStabilityScore(element);
+        scores.put("stability", stabilityScore);
+        
+        // Calculate frequency score
+        double frequencyScore = calculateFrequencyScore(element);
+        scores.put("frequency", frequencyScore);
+        
+        return scores;
+    }
+    
+    /**
+     * Calculate semantic score based on element meaning
+     */
+    private double calculateSemanticScore(RecordingEvent.ElementInfo element) {
+        double score = 0.0;
+        
+        // Check tag name semantics
+        String tag = element.getTagName();
+        if (tag != null) {
+            tag = tag.toLowerCase();
+            
+            // Semantic HTML elements get higher scores
+            if (tag.equals("button") || tag.equals("a") || tag.equals("input") || 
+                tag.equals("select") || tag.equals("textarea") || tag.equals("label") || 
+                tag.matches("h[1-6]") || tag.equals("nav") || tag.equals("header") || 
+                tag.equals("footer") || tag.equals("main") || tag.equals("article") || 
+                tag.equals("section")) {
+                score += 0.3;
+            }
+        }
+        
+        // Check role attribute
+        String role = element.getAttributes() != null ? element.getAttributes().get("role") : null;
+        if (role != null && !role.isEmpty()) {
+            score += 0.3;
+        }
+        
+        // Check aria attributes
+        if (element.getAttributes() != null) {
+            int ariaCount = 0;
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("aria-")) {
+                    ariaCount++;
+                }
+            }
+            
+            if (ariaCount > 0) {
+                score += Math.min(0.2, 0.05 * ariaCount);
+            }
+        }
+        
+        // Check text semantics
+        String text = element.getText();
+        if (text != null && !text.isEmpty()) {
+            text = text.toLowerCase();
+            
+            // Check for button-like text
+            for (String term : buttonTerms) {
+                if (text.contains(term)) {
+                    score += 0.1;
+                    break;
+                }
+            }
+            
+            // Check for link-like text
+            for (String term : linkTerms) {
+                if (text.contains(term)) {
+                    score += 0.1;
+                    break;
+                }
+            }
+            
+            // Check for action verbs
+            for (String verb : actionVerbs) {
+                if (text.contains(verb)) {
+                    score += 0.1;
+                    break;
+                }
+            }
+            
+            // Check for UI patterns
+            for (Map.Entry<String, Pattern> entry : uiPatterns.entrySet()) {
+                if (entry.getValue().matcher(text).find()) {
+                    score += 0.1;
+                    break;
+                }
+            }
+        }
+        
+        // Cap the score at 1.0
+        return Math.min(1.0, score);
+    }
+    
+    /**
+     * Calculate position score based on element position
+     */
+    private double calculatePositionScore(RecordingEvent.ElementInfo element) {
+        double score = 0.0;
+        
+        if (element.getBounds() != null && !element.getBounds().isEmpty()) {
+            // Elements in the center of the viewport are more likely targets
+            Object xObj = element.getBounds().get("x");
+            Object yObj = element.getBounds().get("y");
+            Object widthObj = element.getBounds().get("width");
+            Object heightObj = element.getBounds().get("height");
+            
+            if (xObj != null && yObj != null && widthObj != null && heightObj != null) {
+                double x = ((Number) xObj).doubleValue();
+                double y = ((Number) yObj).doubleValue();
+                double width = ((Number) widthObj).doubleValue();
+                double height = ((Number) heightObj).doubleValue();
+                
+                // Check if element is visible and has reasonable size
+                if (width > 0 && height > 0 && element.isVisible()) {
+                    score += 0.2;
+                    
+                    // Calculate center position
+                    double centerX = x + width / 2;
+                    double centerY = y + height / 2;
+                    
+                    // Normalize to 0-1 range (assuming 1280x720 viewport)
+                    double normalizedX = centerX / 1280;
+                    double normalizedY = centerY / 720;
+                    
+                    // Calculate distance from center (0.5, 0.5)
+                    double distFromCenter = Math.sqrt(
+                        Math.pow(normalizedX - 0.5, 2) + Math.pow(normalizedY - 0.5, 2)
+                    );
+                    
+                    // Convert to score (closer to center = higher score)
+                    double positionScore = Math.max(0, 0.5 - distFromCenter);
+                    score += positionScore;
+                    
+                    // Bonus for elements in the golden ratio areas
+                    double goldenRatio = 0.618;
+                    double distFromGolden = Math.min(
+                        Math.sqrt(Math.pow(normalizedX - goldenRatio, 2) + Math.pow(normalizedY - goldenRatio, 2)),
+                        Math.sqrt(Math.pow(normalizedX - (1 - goldenRatio), 2) + Math.pow(normalizedY - goldenRatio, 2))
+                    );
+                    
+                    if (distFromGolden < 0.2) {
+                        score += 0.1;
+                    }
+                }
+            }
+        }
+        
+        // Cap the score at 1.0
+        return Math.min(1.0, score);
+    }
+    
+    /**
+     * Calculate uniqueness score based on how distinctive the element is
+     */
+    private double calculateUniquenessScore(RecordingEvent.ElementInfo element) {
+        double score = 0.0;
+        
+        // ID is highly unique
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            score += 0.5;
+        }
+        
+        // Name attribute is somewhat unique
+        if (element.getName() != null && !element.getName().isEmpty()) {
+            score += 0.3;
+        }
+        
+        // Test IDs are highly unique
+        if (element.getAttributes() != null) {
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("data-test") || attrName.equals("data-cy") || 
+                    attrName.equals("data-qa") || attrName.equals("data-automation")) {
+                    score += 0.5;
+                    break;
+                }
+            }
+        }
+        
+        // Text content can be unique
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            String text = element.getText();
+            
+            // Longer text is more likely to be unique
+            if (text.length() > 10) {
+                score += Math.min(0.3, text.length() / 100.0);
+            }
+            
+            // Specific patterns can be unique
+            Map<String, String> patterns = identifyPatterns(text);
+            if (!patterns.isEmpty()) {
+                score += 0.2;
+            }
+        }
+        
+        // Cap the score at 1.0
+        return Math.min(1.0, score);
+    }
+    
+    /**
+     * Calculate accessibility score based on accessibility features
+     */
+    private double calculateAccessibilityScore(RecordingEvent.ElementInfo element) {
+        double score = 0.0;
+        
+        if (element.getAttributes() != null) {
+            // ARIA label
+            if (element.getAttributes().containsKey("aria-label")) {
+                score += 0.3;
+            }
+            
+            // ARIA role
+            if (element.getAttributes().containsKey("role")) {
+                score += 0.3;
+            }
+            
+            // Other ARIA attributes
+            int ariaCount = 0;
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("aria-") && !attrName.equals("aria-label")) {
+                    ariaCount++;
+                }
+            }
+            
+            if (ariaCount > 0) {
+                score += Math.min(0.2, 0.05 * ariaCount);
+            }
+            
+            // Alt text for images
+            if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("img") && 
+                element.getAttributes().containsKey("alt")) {
+                score += 0.3;
+            }
+            
+            // Label association
+            if (element.getAttributes().containsKey("for") || 
+                element.getAttributes().containsKey("id") && element.getTagName() != null && 
+                (element.getTagName().equalsIgnoreCase("input") || 
+                 element.getTagName().equalsIgnoreCase("select") || 
+                 element.getTagName().equalsIgnoreCase("textarea"))) {
+                score += 0.3;
+            }
+        }
+        
+        // Cap the score at 1.0
+        return Math.min(1.0, score);
+    }
+    
+    /**
+     * Calculate stability score based on how likely the element is to change
+     */
+    private double calculateStabilityScore(RecordingEvent.ElementInfo element) {
+        double score = 0.0;
+        
+        // IDs are usually stable
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            String id = element.getId();
+            
+            // Check if ID looks generated (contains random-looking segments)
+            if (id.matches(".*[0-9a-f]{4,}.*") || id.contains("_") && id.matches(".*\\d+.*")) {
+                score += 0.2; // Less points for potentially generated IDs
+            } else {
+                score += 0.4;
+            }
+        }
+        
+        // Test IDs are usually stable
+        if (element.getAttributes() != null) {
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("data-test") || attrName.equals("data-cy") || 
+                    attrName.equals("data-qa") || attrName.equals("data-automation")) {
+                    score += 0.4;
+                    break;
+                }
+            }
+        }
+        
+        // Names are somewhat stable
+        if (element.getName() != null && !element.getName().isEmpty()) {
+            score += 0.3;
+        }
+        
+        // Static text is somewhat stable
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            String text = element.getText();
+            
+            // Check if text looks like static content vs. dynamic data
+            if (identifyPatterns(text).isEmpty() && !text.matches(".*\\d{4,}.*")) {
+                score += 0.2;
+            } else {
+                score += 0.1;
+            }
+        }
+        
+        // Semantic HTML elements are usually stable
+        if (element.getTagName() != null) {
+            String tag = element.getTagName().toLowerCase();
+            
+            if (tag.equals("button") || tag.equals("a") || tag.equals("input") || 
+                tag.equals("select") || tag.equals("textarea") || tag.equals("label") || 
+                tag.matches("h[1-6]") || tag.equals("nav") || tag.equals("header") || 
+                tag.equals("footer")) {
+                score += 0.2;
+            }
+        }
+        
+        // Cap the score at 1.0
+        return Math.min(1.0, score);
+    }
+    
+    /**
+     * Calculate frequency score based on how often the element is seen
+     */
+    private double calculateFrequencyScore(RecordingEvent.ElementInfo element) {
+        String elementKey = createElementKey(element);
+        int frequency = elementFrequency.getOrDefault(elementKey, 0);
+        
+        // Scale frequency to a score between 0 and 1
+        return Math.min(1.0, frequency / 5.0);
+    }
+    
+    /**
+     * Enhance locators with calculated scores
+     */
+    private List<RecordingEvent.LocatorInfo> enhanceLocatorsWithScores(
+            List<RecordingEvent.LocatorInfo> baseLocators, Map<String, Double> scores) {
+        
+        // If no base locators, return empty list
+        if (baseLocators == null || baseLocators.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // Create a copy of the base locators
+        List<RecordingEvent.LocatorInfo> enhancedLocators = new ArrayList<>(baseLocators);
+        
+        // Calculate a composite score for each locator
+        Map<RecordingEvent.LocatorInfo, Double> locatorScores = new HashMap<>();
+        
+        for (RecordingEvent.LocatorInfo locator : enhancedLocators) {
+            double compositeScore = calculateLocatorScore(locator, scores);
+            locatorScores.put(locator, compositeScore);
+        }
+        
+        // Sort locators by composite score
+        enhancedLocators.sort((a, b) -> Double.compare(locatorScores.get(b), locatorScores.get(a)));
+        
+        // Update priorities based on composite scores
+        for (int i = 0; i < enhancedLocators.size(); i++) {
+            RecordingEvent.LocatorInfo locator = enhancedLocators.get(i);
+            double score = locatorScores.get(locator);
+            
+            // Scale score to priority range (50-100)
+            int priority = 50 + (int) (50 * score);
+            locator.setPriority(priority);
+            
+            // Update robustness
+            if (score >= 0.8) {
+                locator.setRobustness("high");
+            } else if (score >= 0.5) {
+                locator.setRobustness("medium");
+            } else {
+                locator.setRobustness("low");
+            }
+        }
+        
+        return enhancedLocators;
+    }
+    
+    /**
+     * Calculate a composite score for a locator
+     */
+    private double calculateLocatorScore(RecordingEvent.LocatorInfo locator, Map<String, Double> elementScores) {
+        double score = 0.0;
+        
+        // Base score from locator type
+        String type = locator.getType();
+        if ("id".equals(type)) {
+            score += 0.5;
+        } else if ("name".equals(type)) {
+            score += 0.4;
+        } else if ("testId".equals(type)) {
+            score += 0.5;
+        } else if ("cssSelector".equals(type)) {
+            score += 0.3;
+        } else if ("xpath".equals(type)) {
+            score += 0.2;
+        } else if ("text".equals(type) || "partialText".equals(type)) {
+            score += 0.3;
+        } else {
+            score += 0.1;
+        }
+        
+        // Add element scores
+        if (elementScores.containsKey("semantic")) {
+            score += 0.1 * elementScores.get("semantic");
+        }
+        
+        if (elementScores.containsKey("uniqueness")) {
+            score += 0.2 * elementScores.get("uniqueness");
+        }
+        
+        if (elementScores.containsKey("stability")) {
+            score += 0.2 * elementScores.get("stability");
+        }
+        
+        if (elementScores.containsKey("frequency")) {
+            score += 0.1 * elementScores.get("frequency");
+        }
+        
+        // Check if the locator value is robust
+        String value = locator.getValue();
+        if (value != null && !value.isEmpty()) {
+            // Penalty for very long/complex locators
+            if (value.length() > 100) {
+                score -= 0.1;
+            } else if (value.length() > 50) {
+                score -= 0.05;
+            }
+            
+            // Penalty for locators with many layers/components
+            int componentCount = value.split("[/ >]").length;
+            if (componentCount > 5) {
+                score -= 0.1;
+            } else if (componentCount > 3) {
+                score -= 0.05;
+            }
+            
+            // Penalty for locators that look brittle
+            if (value.contains("nth-child") || value.contains("nth-of-type") || 
+                value.contains("[1]") || value.contains("[2]") || value.contains("[3]")) {
+                score -= 0.1;
+            }
+        }
+        
+        // Cap score between 0 and 1
+        return Math.max(0.0, Math.min(1.0, score));
+    }
+    
+    /**
+     * Identify patterns in text
+     */
+    private Map<String, String> identifyPatterns(String text) {
+        if (text == null || text.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        
+        Map<String, String> patterns = new HashMap<>();
+        
+        // Check for email pattern
+        Matcher emailMatcher = Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b").matcher(text);
+        if (emailMatcher.find()) {
+            patterns.put("email", emailMatcher.group());
+        }
+        
+        // Check for phone pattern
+        Matcher phoneMatcher = Pattern.compile("\\b(\\+\\d{1,3}[ -]?)?\\(?\\d{3}\\)?[ -]?\\d{3}[ -]?\\d{4}\\b").matcher(text);
+        if (phoneMatcher.find()) {
+            patterns.put("phone", phoneMatcher.group());
+        }
+        
+        // Check for date pattern
+        Matcher dateMatcher = Pattern.compile("\\b(\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{1,4}|\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4})\\b").matcher(text);
+        if (dateMatcher.find()) {
+            patterns.put("date", dateMatcher.group());
+        }
+        
+        // Check for URL pattern
+        Matcher urlMatcher = Pattern.compile("\\b(https?|ftp)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]").matcher(text);
+        if (urlMatcher.find()) {
+            patterns.put("url", urlMatcher.group());
+        }
+        
+        // Check for currency pattern
+        Matcher currencyMatcher = Pattern.compile("\\b(\\$|€|£|¥)\\s?\\d+(\\.\\d{2})?\\b").matcher(text);
+        if (currencyMatcher.find()) {
+            patterns.put("currency", currencyMatcher.group());
+        }
+        
+        return patterns;
+    }
+    
+    /**
+     * Generate wait strategies for an element
+     */
+    public List<Map<String, Object>> generateWaitStrategies(RecordingEvent.ElementInfo element) {
+        List<Map<String, Object>> strategies = new ArrayList<>();
+        
+        if (element == null) {
+            return strategies;
+        }
+        
+        // Wait for visibility
+        Map<String, Object> visibilityStrategy = new HashMap<>();
+        visibilityStrategy.put("type", "visibility");
+        visibilityStrategy.put("priority", 100);
+        strategies.add(visibilityStrategy);
+        
+        // Wait for text content if applicable
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            Map<String, Object> textStrategy = new HashMap<>();
+            textStrategy.put("type", "textPresence");
+            textStrategy.put("value", element.getText());
+            textStrategy.put("priority", 90);
+            strategies.add(textStrategy);
+        }
+        
+        // Wait for element to be enabled if it's a form control
+        if (element.getTagName() != null && 
+            (element.getTagName().equalsIgnoreCase("input") || 
+             element.getTagName().equalsIgnoreCase("button") || 
+             element.getTagName().equalsIgnoreCase("select") || 
+             element.getTagName().equalsIgnoreCase("textarea"))) {
+            
+            Map<String, Object> enabledStrategy = new HashMap<>();
+            enabledStrategy.put("type", "enabled");
+            enabledStrategy.put("priority", 95);
+            strategies.add(enabledStrategy);
+        }
+        
+        // Wait for image to load
+        if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("img")) {
+            Map<String, Object> imageStrategy = new HashMap<>();
+            imageStrategy.put("type", "imageLoaded");
+            imageStrategy.put("priority", 95);
+            strategies.add(imageStrategy);
+        }
+        
+        // Wait for attribute if applicable
+        if (element.getAttributes() != null && !element.getAttributes().isEmpty()) {
+            // Find a good attribute to wait for
+            String attrName = null;
+            String attrValue = null;
+            
+            // Prefer data-test attributes
+            for (String name : element.getAttributes().keySet()) {
+                if (name.startsWith("data-test") || name.equals("data-cy") || 
+                    name.equals("data-qa") || name.equals("data-automation")) {
+                    attrName = name;
+                    attrValue = element.getAttributes().get(name);
+                    break;
+                }
+            }
+            
+            // Fall back to other distinctive attributes
+            if (attrName == null) {
+                for (Map.Entry<String, String> entry : element.getAttributes().entrySet()) {
+                    String name = entry.getKey();
+                    
+                    // Skip common dynamic attributes
+                    if (name.equals("style") || name.equals("class") || name.startsWith("on") || 
+                        name.startsWith("aria-") || name.equals("tabindex")) {
+                        continue;
+                    }
+                    
+                    attrName = name;
+                    attrValue = entry.getValue();
+                    break;
+                }
+            }
+            
+            if (attrName != null && attrValue != null) {
+                Map<String, Object> attributeStrategy = new HashMap<>();
+                attributeStrategy.put("type", "attributePresence");
+                attributeStrategy.put("name", attrName);
+                attributeStrategy.put("value", attrValue);
+                attributeStrategy.put("priority", 85);
+                strategies.add(attributeStrategy);
+            }
+        }
+        
+        return strategies;
+    }
+    
+    /**
+     * Analyze a group of related elements to find the best locator strategy
+     */
+    public Map<String, Object> analyzeElementGroup(List<RecordingEvent.ElementInfo> elements, RecordingSession session) {
+        Map<String, Object> result = new HashMap<>();
+        
+        if (elements == null || elements.isEmpty()) {
+            return result;
+        }
+        
+        // Detect if this is a list or table structure
+        boolean isList = detectListStructure(elements);
+        boolean isTable = detectTableStructure(elements);
+        
+        result.put("isList", isList);
+        result.put("isTable", isTable);
+        
+        // Find common patterns
+        Map<String, Integer> commonAttributes = findCommonAttributes(elements);
+        result.put("commonAttributes", commonAttributes);
+        
+        // Find the best locator strategy
+        Map<String, Object> locatorStrategy = determineBestLocatorStrategy(elements, isList, isTable, commonAttributes);
+        result.put("locatorStrategy", locatorStrategy);
+        
+        // Generate common wait strategy
+        List<Map<String, Object>> waitStrategies = generateCommonWaitStrategies(elements, isList, isTable);
+        result.put("waitStrategies", waitStrategies);
+        
+        return result;
+    }
+    
+    /**
+     * Detect if a group of elements forms a list structure
+     */
+    private boolean detectListStructure(List<RecordingEvent.ElementInfo> elements) {
+        if (elements.size() < 2) {
+            return false;
+        }
+        
+        // Check if all elements have the same tag
+        String firstTag = elements.get(0).getTagName();
+        if (firstTag == null) {
+            return false;
+        }
+        
+        // Check if elements are list items
+        if (firstTag.equalsIgnoreCase("li")) {
+            return true;
+        }
+        
+        // Check if all elements have the same parent
+        boolean sameParent = true;
+        String firstParentXpath = elements.get(0).getXpath();
+        if (firstParentXpath == null) {
+            return false;
+        }
+        
+        // Extract parent path
+        int lastSlashIndex = firstParentXpath.lastIndexOf('/');
+        if (lastSlashIndex <= 0) {
+            return false;
+        }
+        
+        String firstParentPath = firstParentXpath.substring(0, lastSlashIndex);
+        
+        for (int i = 1; i < elements.size(); i++) {
+            String xpath = elements.get(i).getXpath();
+            if (xpath == null) {
+                sameParent = false;
+                break;
+            }
+            
+            lastSlashIndex = xpath.lastIndexOf('/');
+            if (lastSlashIndex <= 0) {
+                sameParent = false;
+                break;
+            }
+            
+            String parentPath = xpath.substring(0, lastSlashIndex);
+            if (!parentPath.equals(firstParentPath)) {
+                sameParent = false;
+                break;
+            }
+        }
+        
+        if (sameParent) {
+            // Check if the parent is a list element
+            if (firstParentPath.endsWith("ul") || firstParentPath.endsWith("ol") || 
+                firstParentPath.contains("/ul/") || firstParentPath.contains("/ol/")) {
+                return true;
+            }
+        }
+        
+        // Check if there's a pattern in class names or IDs suggesting a list
+        int listPatternCount = 0;
+        
+        for (RecordingEvent.ElementInfo element : elements) {
+            String className = element.getClassName();
+            String id = element.getId();
+            
+            if (className != null && (className.contains("list-item") || className.contains("item-") || 
+                                    className.matches(".*item\\d+.*"))) {
+                listPatternCount++;
+            } else if (id != null && (id.contains("list-item") || id.contains("item-") || 
+                                     id.matches(".*item\\d+.*"))) {
+                listPatternCount++;
+            }
+        }
+        
+        return listPatternCount >= elements.size() / 2;
+    }
+    
+    /**
+     * Detect if a group of elements forms a table structure
+     */
+    private boolean detectTableStructure(List<RecordingEvent.ElementInfo> elements) {
+        if (elements.size() < 3) {
+            return false;
+        }
+        
+        // Check if elements are table cells
+        int tdCount = 0;
+        int thCount = 0;
+        int trCount = 0;
+        
+        for (RecordingEvent.ElementInfo element : elements) {
+            String tag = element.getTagName();
+            if (tag == null) {
+                continue;
+            }
+            
+            if (tag.equalsIgnoreCase("td")) {
+                tdCount++;
+            } else if (tag.equalsIgnoreCase("th")) {
+                thCount++;
+            } else if (tag.equalsIgnoreCase("tr")) {
+                trCount++;
+            }
+        }
+        
+        if (tdCount > 0 || thCount > 0 || trCount > 0) {
+            return true;
+        }
+        
+        // Check if elements have a common parent that is a table
+        String firstXpath = elements.get(0).getXpath();
+        if (firstXpath == null) {
+            return false;
+        }
+        
+        if (firstXpath.contains("/table/") || firstXpath.contains("/tbody/") || 
+            firstXpath.contains("/thead/") || firstXpath.contains("/tr/")) {
+            return true;
+        }
+        
+        // Check for table-like grid structure in class names
+        int gridPatternCount = 0;
+        
+        for (RecordingEvent.ElementInfo element : elements) {
+            String className = element.getClassName();
+            
+            if (className != null && (className.contains("table") || className.contains("grid") || 
+                                    className.contains("row") || className.contains("cell") || 
+                                    className.contains("col"))) {
+                gridPatternCount++;
+            }
+        }
+        
+        return gridPatternCount >= elements.size() / 2;
+    }
+    
+    /**
+     * Find common attributes in a group of elements
+     */
+    private Map<String, Integer> findCommonAttributes(List<RecordingEvent.ElementInfo> elements) {
+        Map<String, Integer> attributeCounts = new HashMap<>();
+        
+        for (RecordingEvent.ElementInfo element : elements) {
+            if (element.getAttributes() == null) {
+                continue;
+            }
+            
+            for (String attrName : element.getAttributes().keySet()) {
+                attributeCounts.put(attrName, attributeCounts.getOrDefault(attrName, 0) + 1);
+            }
+        }
+        
+        // Filter to only attributes that appear in at least half the elements
+        Map<String, Integer> commonAttributes = new HashMap<>();
+        int threshold = elements.size() / 2;
+        
+        for (Map.Entry<String, Integer> entry : attributeCounts.entrySet()) {
+            if (entry.getValue() >= threshold) {
+                commonAttributes.put(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        return commonAttributes;
+    }
+    
+    /**
+     * Determine the best locator strategy for a group of elements
+     */
+    private Map<String, Object> determineBestLocatorStrategy(List<RecordingEvent.ElementInfo> elements, 
+                                                            boolean isList, boolean isTable, 
+                                                            Map<String, Integer> commonAttributes) {
+        Map<String, Object> strategy = new HashMap<>();
+        
+        if (elements.isEmpty()) {
+            return strategy;
+        }
+        
+        // Check for data-test attributes first
+        for (String attrName : commonAttributes.keySet()) {
+            if (attrName.startsWith("data-test") || attrName.equals("data-cy") || 
+                attrName.equals("data-qa") || attrName.equals("data-automation")) {
+                
+                strategy.put("type", "attribute");
+                strategy.put("attribute", attrName);
+                return strategy;
+            }
+        }
+        
+        // For lists
+        if (isList) {
+            strategy.put("type", "list");
+            
+            // Find the parent container
+            String firstXpath = elements.get(0).getXpath();
+            if (firstXpath != null) {
+                int lastSlashIndex = firstXpath.lastIndexOf('/');
+                if (lastSlashIndex > 0) {
+                    String parentPath = firstXpath.substring(0, lastSlashIndex);
+                    strategy.put("container", parentPath);
+                }
+            }
+            
+            // Find a good identifier for list items
+            if (elements.get(0).getTagName() != null && 
+                elements.get(0).getTagName().equalsIgnoreCase("li")) {
+                strategy.put("itemSelector", "li");
+            } else {
+                // Look for common class in elements
+                Map<String, Integer> classCount = new HashMap<>();
+                
+                for (RecordingEvent.ElementInfo element : elements) {
+                    String className = element.getClassName();
+                    if (className == null || className.isEmpty()) {
+                        continue;
+                    }
+                    
+                    String[] classes = className.split("\\s+");
+                    for (String cls : classes) {
+                        classCount.put(cls, classCount.getOrDefault(cls, 0) + 1);
+                    }
+                }
+                
+                // Find the most common class
+                String mostCommonClass = null;
+                int maxCount = 0;
+                
+                for (Map.Entry<String, Integer> entry : classCount.entrySet()) {
+                    if (entry.getValue() > maxCount) {
+                        maxCount = entry.getValue();
+                        mostCommonClass = entry.getKey();
+                    }
+                }
+                
+                if (mostCommonClass != null && maxCount >= elements.size() / 2) {
+                    strategy.put("itemSelector", "." + mostCommonClass);
+                } else {
+                    // Fall back to generic selector
+                    strategy.put("itemSelector", "*");
+                }
+            }
+            
+            return strategy;
+        }
+        
+        // For tables
+        if (isTable) {
+            strategy.put("type", "table");
+            
+            // Find the table element
+            String tableXpath = null;
+            String firstXpath = elements.get(0).getXpath();
+            
+            if (firstXpath != null) {
+                // Look for table in the path
+                int tableIndex = firstXpath.indexOf("/table");
+                if (tableIndex >= 0) {
+                    int endIndex = firstXpath.indexOf('/', tableIndex + 1);
+                    if (endIndex > tableIndex) {
+                        tableXpath = firstXpath.substring(0, endIndex);
+                    } else {
+                        tableXpath = firstXpath.substring(0, tableIndex + 6);
+                    }
+                }
+            }
+            
+            if (tableXpath != null) {
+                strategy.put("tableSelector", tableXpath);
+            }
+            
+            // Determine row and cell selectors
+            strategy.put("rowSelector", "tr");
+            strategy.put("cellSelector", "td, th");
+            
+            return strategy;
+        }
+        
+        // For other element groups, find a common selector strategy
+        
+        // Check for common class
+        Map<String, Integer> classCount = new HashMap<>();
+        
+        for (RecordingEvent.ElementInfo element : elements) {
+            String className = element.getClassName();
+            if (className == null || className.isEmpty()) {
+                continue;
+            }
+            
+            String[] classes = className.split("\\s+");
+            for (String cls : classes) {
+                classCount.put(cls, classCount.getOrDefault(cls, 0) + 1);
+            }
+        }
+        
+        // Find classes that appear in many elements
+        List<String> commonClasses = new ArrayList<>();
+        
+        for (Map.Entry<String, Integer> entry : classCount.entrySet()) {
+            if (entry.getValue() >= elements.size() / 2) {
+                commonClasses.add(entry.getKey());
+            }
+        }
+        
+        if (!commonClasses.isEmpty()) {
+            strategy.put("type", "class");
+            strategy.put("classes", commonClasses);
+            return strategy;
+        }
+        
+        // Check for similar attributes
+        for (Map.Entry<String, Integer> entry : commonAttributes.entrySet()) {
+            String attrName = entry.getKey();
+            
+            // Skip common attributes that are less useful
+            if (attrName.equals("class") || attrName.equals("style") || 
+                attrName.startsWith("on") || attrName.startsWith("aria-")) {
+                continue;
+            }
+            
+            strategy.put("type", "attribute");
+            strategy.put("attribute", attrName);
+            return strategy;
+        }
+        
+        // Check for tag name pattern
+        String firstTag = elements.get(0).getTagName();
+        boolean allSameTag = true;
+        
+        for (int i = 1; i < elements.size(); i++) {
+            if (!firstTag.equals(elements.get(i).getTagName())) {
+                allSameTag = false;
+                break;
+            }
+        }
+        
+        if (allSameTag) {
+            strategy.put("type", "tag");
+            strategy.put("tag", firstTag);
+            return strategy;
+        }
+        
+        // Fall back to xpath
+        strategy.put("type", "xpath");
+        
+        // Try to find a common parent
+        String commonParent = findCommonParent(elements);
+        if (commonParent != null) {
+            strategy.put("container", commonParent);
+        }
+        
+        return strategy;
+    }
+    
+    /**
+     * Find a common parent xpath for a group of elements
+     */
+    private String findCommonParent(List<RecordingEvent.ElementInfo> elements) {
+        if (elements.isEmpty() || elements.get(0).getXpath() == null) {
+            return null;
+        }
+        
+        String firstXpath = elements.get(0).getXpath();
+        String[] parts = firstXpath.split("/");
+        
+        // Start with the full path and remove parts from the end
+        for (int i = parts.length - 1; i >= 0; i--) {
+            StringBuilder commonPath = new StringBuilder();
+            
+            for (int j = 0; j <= i; j++) {
+                if (j > 0) {
+                    commonPath.append("/");
+                }
+                commonPath.append(parts[j]);
+            }
+            
+            boolean isCommon = true;
+            
+            for (int j = 1; j < elements.size(); j++) {
+                String xpath = elements.get(j).getXpath();
+                if (xpath == null || !xpath.startsWith(commonPath.toString())) {
+                    isCommon = false;
+                    break;
+                }
+            }
+            
+            if (isCommon) {
+                return commonPath.toString();
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Generate common wait strategies for a group of elements
+     */
+    private List<Map<String, Object>> generateCommonWaitStrategies(List<RecordingEvent.ElementInfo> elements, 
+                                                                  boolean isList, boolean isTable) {
+        List<Map<String, Object>> strategies = new ArrayList<>();
+        
+        // Wait for container visibility
+        Map<String, Object> visibilityStrategy = new HashMap<>();
+        visibilityStrategy.put("type", "containerVisibility");
+        visibilityStrategy.put("priority", 100);
+        strategies.add(visibilityStrategy);
+        
+        // For lists and tables, add count wait strategy
+        if (isList || isTable) {
+            Map<String, Object> countStrategy = new HashMap<>();
+            countStrategy.put("type", "elementCount");
+            countStrategy.put("min", elements.size());
+            countStrategy.put("priority", 90);
+            strategies.add(countStrategy);
+        }
+        
+        // For tables, add header wait strategy
+        if (isTable) {
+            Map<String, Object> headerStrategy = new HashMap<>();
+            headerStrategy.put("type", "headerPresence");
+            headerStrategy.put("priority", 95);
+            strategies.add(headerStrategy);
+        }
+        
+        return strategies;
+    }
+    
+    /**
+     * Suggest element improvements based on analysis
+     */
+    public List<Map<String, Object>> suggestElementImprovements(RecordingEvent.ElementInfo element) {
+        List<Map<String, Object>> improvements = new ArrayList<>();
+        
+        if (element == null) {
+            return improvements;
+        }
+        
+        // Check for missing ID
+        if (element.getId() == null || element.getId().isEmpty()) {
+            Map<String, Object> improvement = new HashMap<>();
+            improvement.put("type", "missing_id");
+            improvement.put("severity", "medium");
+            improvement.put("message", "Element has no ID attribute");
+            improvement.put("suggestion", "Add a unique ID attribute to improve testability");
+            improvements.add(improvement);
+        }
+        
+        // Check for missing test attributes
+        boolean hasTestAttr = false;
+        
+        if (element.getAttributes() != null) {
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("data-test") || attrName.equals("data-cy") || 
+                    attrName.equals("data-qa") || attrName.equals("data-automation")) {
+                    hasTestAttr = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!hasTestAttr) {
+            Map<String, Object> improvement = new HashMap<>();
+            improvement.put("type", "missing_test_attribute");
+            improvement.put("severity", "high");
+            improvement.put("message", "Element has no test-specific attribute");
+            improvement.put("suggestion", "Add a data-testid or similar attribute for more stable test selectors");
+            improvements.add(improvement);
+        }
+        
+        // Check for accessibility issues
+        Map<String, Object> accessibilityIssues = checkAccessibility(element);
+        if (!accessibilityIssues.isEmpty()) {
+            improvements.add(accessibilityIssues);
+        }
+        
+        // Check for potential stability issues
+        if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("div") && 
+            (element.getClassName() == null || element.getClassName().isEmpty()) && 
+            (element.getId() == null || element.getId().isEmpty())) {
+            
+            Map<String, Object> improvement = new HashMap<>();
+            improvement.put("type", "generic_element");
+            improvement.put("severity", "medium");
+            improvement.put("message", "Element uses generic div without identifiers");
+            improvement.put("suggestion", "Use more semantic HTML elements or add unique identifiers");
+            improvements.add(improvement);
+        }
+        
+        return improvements;
+    }
+    
+    /**
+     * Check for accessibility issues
+     */
+    private Map<String, Object> checkAccessibility(RecordingEvent.ElementInfo element) {
+        Map<String, Object> issues = new HashMap<>();
+        
+        if (element == null) {
+            return issues;
+        }
+        
+        List<String> recommendations = new ArrayList<>();
+        
+        // Check for missing alt text on images
+        if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("img") && 
+            (element.getAttributes() == null || !element.getAttributes().containsKey("alt"))) {
+            recommendations.add("Add alt text to image elements");
+        }
+        
+        // Check for missing label on input fields
+        if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("input") && 
+            (element.getAttributes() == null || !element.getAttributes().containsKey("aria-label") && 
+             !element.getAttributes().containsKey("aria-labelledby") && 
+             !element.getAttributes().containsKey("title"))) {
+            recommendations.add("Add accessible label to input elements");
+        }
+        
+        // Check for missing roles on non-semantic elements
+        if (element.getTagName() != null && element.getTagName().equalsIgnoreCase("div") && 
+            (element.getAttributes() == null || !element.getAttributes().containsKey("role"))) {
+            
+            boolean hasClickHandler = false;
+            if (element.getAttributes() != null) {
+                for (String attrName : element.getAttributes().keySet()) {
+                    if (attrName.startsWith("on") || attrName.equals("ng-click") || 
+                        attrName.equals("v-on:click")) {
+                        hasClickHandler = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (hasClickHandler) {
+                recommendations.add("Add appropriate ARIA role (e.g., 'button') to clickable div elements");
+            }
+        }
+        
+        // Check for color contrast issues (simple heuristic)
+        if (element.getAttributes() != null && element.getAttributes().containsKey("style")) {
+            String style = element.getAttributes().get("style");
+            if (style != null && (style.contains("color") || style.contains("background"))) {
+                recommendations.add("Ensure sufficient color contrast for text elements");
+            }
+        }
+        
+        if (!recommendations.isEmpty()) {
+            issues.put("type", "accessibility");
+            issues.put("severity", "high");
+            issues.put("message", "Element has accessibility issues");
+            issues.put("recommendations", recommendations);
+        }
+        
+        return issues;
+    }
+    
+    /**
+     * Generate locator recommendations based on AI analysis
+     */
+    public List<RecordingEvent.LocatorInfo> generateLocatorRecommendations(RecordingEvent.ElementInfo element) {
+        List<RecordingEvent.LocatorInfo> recommendations = new ArrayList<>();
+        
+        if (element == null) {
+            return recommendations;
+        }
+        
+        // Generate ID-based locator if available
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            RecordingEvent.LocatorInfo idLocator = new RecordingEvent.LocatorInfo();
+            idLocator.setType("id");
+            idLocator.setValue(element.getId());
+            idLocator.setPriority(100);
+            idLocator.setRobustness("high");
+            recommendations.add(idLocator);
+        }
+        
+        // Generate test attribute locator if available
+        if (element.getAttributes() != null) {
+            for (Map.Entry<String, String> entry : element.getAttributes().entrySet()) {
+                String name = entry.getKey();
+                String value = entry.getValue();
+                
+                if (name.startsWith("data-test") || name.equals("data-cy") || 
+                    name.equals("data-qa") || name.equals("data-automation")) {
+                    
+                    RecordingEvent.LocatorInfo testIdLocator = new RecordingEvent.LocatorInfo();
+                    testIdLocator.setType("testId");
+                    testIdLocator.setValue(name + "=" + value);
+                    testIdLocator.setPriority(95);
+                    testIdLocator.setRobustness("high");
+                    recommendations.add(testIdLocator);
+                    break;
+                }
+            }
+        }
+        
+        // Generate name-based locator if available
+        if (element.getName() != null && !element.getName().isEmpty()) {
+            RecordingEvent.LocatorInfo nameLocator = new RecordingEvent.LocatorInfo();
+            nameLocator.setType("name");
+            nameLocator.setValue(element.getName());
+            nameLocator.setPriority(90);
+            nameLocator.setRobustness("medium");
+            recommendations.add(nameLocator);
+        }
+        
+        // Generate text-based locator if available
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            // Check if text is too long
+            String text = element.getText();
+            
+            if (text.length() <= 100) {
+                RecordingEvent.LocatorInfo textLocator = new RecordingEvent.LocatorInfo();
+                textLocator.setType("text");
+                textLocator.setValue(text);
+                textLocator.setPriority(85);
+                textLocator.setRobustness("medium");
+                recommendations.add(textLocator);
+            } else {
+                // Use partial text for long text content
+                String partialText = text.substring(0, 50).trim();
+                
+                RecordingEvent.LocatorInfo partialTextLocator = new RecordingEvent.LocatorInfo();
+                partialTextLocator.setType("partialText");
+                partialTextLocator.setValue(partialText);
+                partialTextLocator.setPriority(80);
+                partialTextLocator.setRobustness("medium");
+                recommendations.add(partialTextLocator);
+            }
+        }
+        
+        // Generate CSS selector
+        String cssSelector = generateCssSelector(element);
+        if (cssSelector != null && !cssSelector.isEmpty()) {
+            RecordingEvent.LocatorInfo cssLocator = new RecordingEvent.LocatorInfo();
+            cssLocator.setType("cssSelector");
+            cssLocator.setValue(cssSelector);
+            cssLocator.setPriority(75);
+            cssLocator.setRobustness("medium");
+            recommendations.add(cssLocator);
+        }
+        
+        // Generate XPath as a fallback
+        String xpathSelector = generateXpathSelector(element);
+        if (xpathSelector != null && !xpathSelector.isEmpty()) {
+            RecordingEvent.LocatorInfo xpathLocator = new RecordingEvent.LocatorInfo();
+            xpathLocator.setType("xpath");
+            xpathLocator.setValue(xpathSelector);
+            xpathLocator.setPriority(70);
+            xpathLocator.setRobustness("low");
+            recommendations.add(xpathLocator);
+        }
+        
+        return recommendations;
+    }
+    
+    /**
+     * Generate a CSS selector for an element
+     */
+    private String generateCssSelector(RecordingEvent.ElementInfo element) {
+        if (element == null || element.getTagName() == null) {
+            return null;
+        }
+        
+        StringBuilder selector = new StringBuilder();
+        
+        // Start with tag name
+        selector.append(element.getTagName().toLowerCase());
+        
+        // Add ID if available
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            selector.append("#").append(element.getId());
+            return selector.toString(); // ID should be unique enough
+        }
+        
+        // Add classes if available
+        if (element.getClassName() != null && !element.getClassName().isEmpty()) {
+            String[] classes = element.getClassName().split("\\s+");
+            
+            // Use up to 2 classes to avoid over-specification
+            int classLimit = Math.min(classes.length, 2);
+            
+            for (int i = 0; i < classLimit; i++) {
+                selector.append(".").append(classes[i]);
+            }
+        }
+        
+        // Add attribute selectors for distinctive attributes
+        if (element.getAttributes() != null) {
+            boolean attributeAdded = false;
+            
+            // Prefer data-test attributes
+            for (Map.Entry<String, String> entry : element.getAttributes().entrySet()) {
+                String name = entry.getKey();
+                String value = entry.getValue();
+                
+                if (name.startsWith("data-test") || name.equals("data-cy") || 
+                    name.equals("data-qa") || name.equals("data-automation")) {
+                    
+                    selector.append("[").append(name).append("='").append(value).append("']");
+                    attributeAdded = true;
+                    break;
+                }
+            }
+            
+            // Add name attribute if available and no test attribute was added
+            if (!attributeAdded && element.getName() != null && !element.getName().isEmpty()) {
+                selector.append("[name='").append(element.getName()).append("']");
+                attributeAdded = true;
+            }
+            
+            // Add type attribute for input elements
+            if (element.getTagName().equalsIgnoreCase("input") && element.getType() != null) {
+                selector.append("[type='").append(element.getType()).append("']");
+                attributeAdded = true;
+            }
+            
+            // Add another distinctive attribute if no other attributes were added
+            if (!attributeAdded) {
+                for (Map.Entry<String, String> entry : element.getAttributes().entrySet()) {
+                    String name = entry.getKey();
+                    String value = entry.getValue();
+                    
+                    // Skip common/dynamic attributes
+                    if (name.equals("class") || name.equals("style") || name.startsWith("on") ||
+                        name.startsWith("aria-") || name.equals("tabindex")) {
+                        continue;
+                    }
+                    
+                    if (!value.isEmpty()) {
+                        selector.append("[").append(name).append("='").append(value).append("']");
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return selector.toString();
+    }
+    
+    /**
+     * Generate an XPath selector for an element
+     */
+    private String generateXpathSelector(RecordingEvent.ElementInfo element) {
+        // Use the provided XPath if available
+        if (element.getXpath() != null && !element.getXpath().isEmpty()) {
+            return element.getXpath();
+        }
+        
+        if (element.getTagName() == null) {
+            return null;
+        }
+        
+        StringBuilder xpath = new StringBuilder("//");
+        xpath.append(element.getTagName().toLowerCase());
+        
+        // Add ID if available
+        if (element.getId() != null && !element.getId().isEmpty()) {
+            xpath.append("[@id='").append(element.getId()).append("']");
+            return xpath.toString(); // ID should be unique enough
+        }
+        
+        // Add test attributes if available
+        if (element.getAttributes() != null) {
+            boolean attributeAdded = false;
+            
+            // Prefer data-test attributes
+            for (Map.Entry<String, String> entry : element.getAttributes().entrySet()) {
+                String name = entry.getKey();
+                String value = entry.getValue();
+                
+                if (name.startsWith("data-test") || name.equals("data-cy") || 
+                    name.equals("data-qa") || name.equals("data-automation")) {
+                    
+                    xpath.append("[@").append(name).append("='").append(value).append("']");
+                    attributeAdded = true;
+                    break;
+                }
+            }
+            
+            // Add name attribute if available and no test attribute was added
+            if (!attributeAdded && element.getName() != null && !element.getName().isEmpty()) {
+                xpath.append("[@name='").append(element.getName()).append("']");
+                attributeAdded = true;
+            }
+            
+            // Add type attribute for input elements
+            if (element.getTagName().equalsIgnoreCase("input") && element.getType() != null) {
+                xpath.append("[@type='").append(element.getType()).append("']");
+            }
+        }
+        
+        // Add text condition if available
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            String text = element.getText();
+            
+            if (text.length() <= 50) {
+                // Use exact text for shorter strings
+                xpath.append("[text()='").append(text).append("']");
+            } else {
+                // Use contains for longer strings
+                xpath.append("[contains(text(),'").append(text.substring(0, 40)).append("')]");
+            }
+        }
+        
+        return xpath.toString();
+    }
+    
+    /**
+     * Predict the most appropriate action for an element
+     */
+    public Map<String, Object> predictElementAction(RecordingEvent.ElementInfo element) {
+        Map<String, Object> action = new HashMap<>();
+        
+        if (element == null || element.getTagName() == null) {
+            return action;
+        }
+        
+        String tag = element.getTagName().toLowerCase();
+        String type = element.getType() != null ? element.getType().toLowerCase() : "";
+        String elementType = determineElementType(element);
+        
+        // Default action
+        action.put("type", "click");
+        action.put("confidence", 0.5);
+        
+        // Handle buttons
+        if (tag.equals("button") || (tag.equals("input") && (type.equals("button") || 
+                                                          type.equals("submit") || 
+                                                          type.equals("reset")))) {
+            action.put("type", "click");
+            action.put("confidence", 0.9);
+            return action;
+        }
+        
+        // Handle links
+        if (tag.equals("a") || elementType != null && elementType.equals("link")) {
+            action.put("type", "click");
+            action.put("confidence", 0.9);
+            return action;
+        }
+        
+        // Handle input fields
+        if (tag.equals("input")) {
+            if (type.equals("text") || type.equals("email") || type.equals("password") || 
+                type.equals("number") || type.equals("tel") || type.equals("url") || 
+                type.equals("search") || type.isEmpty()) {
+                
+                action.put("type", "input");
+                action.put("confidence", 0.9);
+                
+                // Suggest appropriate input value based on input type
+                if (type.equals("email")) {
+                    action.put("value", "test@example.com");
+                } else if (type.equals("password")) {
+                    action.put("value", "Password123");
+                } else if (type.equals("tel")) {
+                    action.put("value", "1234567890");
+                } else if (type.equals("number")) {
+                    action.put("value", "42");
+                } else if (type.equals("url")) {
+                    action.put("value", "https://example.com");
+                } else {
+                    action.put("value", "Test Value");
+                }
+                
+                return action;
+            } else if (type.equals("checkbox") || type.equals("radio")) {
+                action.put("type", "click");
+                action.put("confidence", 0.9);
+                return action;
+            } else if (type.equals("file")) {
+                action.put("type", "upload");
+                action.put("confidence", 0.9);
+                action.put("value", "test-file.txt");
+                return action;
+            } else if (type.equals("range")) {
+                action.put("type", "slide");
+                action.put("confidence", 0.8);
+                action.put("value", "50");
+                return action;
+            }
+        }
+        
+        // Handle textareas
+        if (tag.equals("textarea")) {
+            action.put("type", "input");
+            action.put("confidence", 0.9);
+            action.put("value", "Sample text content");
+            return action;
+        }
+        
+        // Handle select elements
+        if (tag.equals("select")) {
+            action.put("type", "select");
+            action.put("confidence", 0.9);
+            action.put("index", 1);
+            return action;
+        }
+        
+        // Handle checkboxes and radio buttons
+        if ((tag.equals("div") || tag.equals("span") || tag.equals("label")) && 
+            element.getClassName() != null && 
+            (element.getClassName().contains("checkbox") || element.getClassName().contains("radio"))) {
+            
+            action.put("type", "click");
+            action.put("confidence", 0.8);
+            return action;
+        }
+        
+        // Handle divs with click handlers
+        if (tag.equals("div") && element.getAttributes() != null) {
+            boolean hasClickHandler = false;
+            
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("on") || attrName.equals("ng-click") || 
+                    attrName.equals("v-on:click")) {
+                    hasClickHandler = true;
+                    break;
+                }
+            }
+            
+            if (hasClickHandler || 
+                element.getClassName() != null && element.getClassName().contains("clickable")) {
+                action.put("type", "click");
+                action.put("confidence", 0.8);
+                return action;
+            }
+        }
+        
+        // Check text for action hints
+        if (element.getText() != null && !element.getText().isEmpty()) {
+            String text = element.getText().toLowerCase();
+            
+            // Check for button-like text
+            for (String term : buttonTerms) {
+                if (text.contains(term)) {
+                    action.put("type", "click");
+                    action.put("confidence", 0.7);
+                    return action;
+                }
+            }
+            
+            // Check for menu-like text
+            for (String term : menuTerms) {
+                if (text.contains(term)) {
+                    action.put("type", "hover");
+                    action.put("confidence", 0.6);
+                    return action;
+                }
+            }
+        }
+        
+        return action;
+    }
+    
+    /**
+     * Find similar elements based on visual and semantic characteristics
+     */
+    public List<RecordingEvent.ElementInfo> findSimilarElements(RecordingEvent.ElementInfo element, 
+                                                              List<RecordingEvent.ElementInfo> allElements) {
+        if (element == null || allElements == null || allElements.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        List<Pair<RecordingEvent.ElementInfo, Double>> similarities = new ArrayList<>();
+        
+        for (RecordingEvent.ElementInfo other : allElements) {
+            if (other == element) {
+                continue;
+            }
+            
+            double similarity = calculateElementSimilarity(element, other);
+            if (similarity > 0.5) { // Only consider reasonably similar elements
+                similarities.add(new Pair<>(other, similarity));
+            }
+        }
+        
+        // Sort by similarity (highest first)
+        similarities.sort((a, b) -> Double.compare(b.getRight(), a.getRight()));
+        
+        // Extract just the elements
+        return similarities.stream()
+            .map(Pair::getLeft)
+            .limit(10) // Limit to top 10 most similar elements
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Calculate similarity between two elements
+     */
+    private double calculateElementSimilarity(RecordingEvent.ElementInfo a, RecordingEvent.ElementInfo b) {
+        double similarity = 0.0;
+        int factors = 0;
+        
+        // Compare tag names
+        if (a.getTagName() != null && b.getTagName() != null && 
+            a.getTagName().equalsIgnoreCase(b.getTagName())) {
+            similarity += 0.2;
+            factors++;
+        }
+        
+        // Compare element types
+        String typeA = determineElementType(a);
+        String typeB = determineElementType(b);
+        
+        if (typeA != null && typeB != null && typeA.equals(typeB)) {
+            similarity += 0.2;
+            factors++;
+        }
+        
+        // Compare classes
+        if (a.getClassName() != null && b.getClassName() != null) {
+            Set<String> classesA = new HashSet<>(Arrays.asList(a.getClassName().split("\\s+")));
+            Set<String> classesB = new HashSet<>(Arrays.asList(b.getClassName().split("\\s+")));
+            
+            // Calculate Jaccard similarity for classes
+            Set<String> union = new HashSet<>(classesA);
+            union.addAll(classesB);
+            
+            Set<String> intersection = new HashSet<>(classesA);
+            intersection.retainAll(classesB);
+            
+            if (!union.isEmpty()) {
+                double classSimil = (double) intersection.size() / union.size();
+                similarity += 0.2 * classSimil;
+                factors++;
+            }
+        }
+        
+        // Compare text content (if any)
+        if (a.getText() != null && !a.getText().isEmpty() && 
+            b.getText() != null && !b.getText().isEmpty()) {
+            
+            // Very simplistic text similarity
+            // In a production system, use a proper text similarity algorithm
+            // For example, cosine similarity with TF-IDF, or a word embedding model
+            String textA = a.getText().toLowerCase();
+            String textB = b.getText().toLowerCase();
+            
+            // Simple contains check
+            if (textA.contains(textB) || textB.contains(textA)) {
+                similarity += 0.1;
+                factors++;
+            }
+            
+            // Check first few words
+            String[] wordsA = textA.split("\\s+");
+            String[] wordsB = textB.split("\\s+");
+            
+            if (wordsA.length > 0 && wordsB.length > 0 && wordsA[0].equals(wordsB[0])) {
+                similarity += 0.1;
+                factors++;
+            }
+        }
+        
+        // Compare attributes
+        if (a.getAttributes() != null && b.getAttributes() != null) {
+            Set<String> attrKeysA = new HashSet<>(a.getAttributes().keySet());
+            Set<String> attrKeysB = new HashSet<>(b.getAttributes().keySet());
+            
+            // Calculate Jaccard similarity for attribute keys
+            Set<String> keyUnion = new HashSet<>(attrKeysA);
+            keyUnion.addAll(attrKeysB);
+            
+            Set<String> keyIntersection = new HashSet<>(attrKeysA);
+            keyIntersection.retainAll(attrKeysB);
+            
+            if (!keyUnion.isEmpty()) {
+                double attrSimil = (double) keyIntersection.size() / keyUnion.size();
+                similarity += 0.15 * attrSimil;
+                factors++;
+            }
+            
+            // Compare attribute values for common keys
+            int matchingValues = 0;
+            for (String key : keyIntersection) {
+                String valueA = a.getAttributes().get(key);
+                String valueB = b.getAttributes().get(key);
+                
+                if (valueA != null && valueB != null && valueA.equals(valueB)) {
+                    matchingValues++;
+                }
+            }
+            
+            if (!keyIntersection.isEmpty()) {
+                double valueSimil = (double) matchingValues / keyIntersection.size();
+                similarity += 0.15 * valueSimil;
+                factors++;
+            }
+        }
+        
+        // Normalize by factors
+        return factors > 0 ? similarity / factors : 0.0;
+    }
+    
+    /**
+     * Utility class for pairs of values
+     */
+    private static class Pair<L, R> {
+        private final L left;
+        private final R right;
+        
+        public Pair(L left, R right) {
+            this.left = left;
+            this.right = right;
+        }
+        
+        public L getLeft() {
+            return left;
+        }
+        
+        public R getRight() {
+            return right;
+        }
+    }
+    
+    /**
+     * Analyze a test session to generate insights
+     */
+    public Map<String, Object> analyzeTestSession(RecordingSession session, List<RecordingEvent> events) {
+        Map<String, Object> insights = new HashMap<>();
+        
+        if (session == null || events == null || events.isEmpty()) {
+            return insights;
+        }
+        
+        // Collect element interactions
+        Map<String, Integer> elementInteractions = new HashMap<>();
+        Map<String, List<RecordingEvent.ElementInfo>> elementsByType = new HashMap<>();
+        Set<String> interactionTypes = new HashSet<>();
+        Map<String, Integer> actionCounts = new HashMap<>();
+        
+        for (RecordingEvent event : events) {
+            if (event.getType() == null || event.getElement() == null) {
+                continue;
+            }
+            
+            RecordingEvent.ElementInfo element = event.getElement();
+            String elementKey = createElementKey(element);
+            elementInteractions.put(elementKey, elementInteractions.getOrDefault(elementKey, 0) + 1);
+            
+            String elementType = determineElementType(element);
+            if (elementType != null) {
+                if (!elementsByType.containsKey(elementType)) {
+                    elementsByType.put(elementType, new ArrayList<>());
+                }
+                elementsByType.get(elementType).add(element);
+            }
+            
+            interactionTypes.add(event.getType());
+            actionCounts.put(event.getType(), actionCounts.getOrDefault(event.getType(), 0) + 1);
+        }
+        
+        // Generate overview statistics
+        Map<String, Object> statistics = new HashMap<>();
+        statistics.put("totalEvents", events.size());
+        statistics.put("uniqueElements", elementInteractions.size());
+        statistics.put("interactionTypes", interactionTypes);
+        statistics.put("actionCounts", actionCounts);
+        statistics.put("elementTypes", elementsByType.keySet());
+        
+        for (Map.Entry<String, List<RecordingEvent.ElementInfo>> entry : elementsByType.entrySet()) {
+            statistics.put(entry.getKey() + "Count", entry.getValue().size());
+        }
+        
+        insights.put("statistics", statistics);
+        
+        // Find most frequently interacted elements
+        List<Map.Entry<String, Integer>> sortedInteractions = new ArrayList<>(elementInteractions.entrySet());
+        sortedInteractions.sort((a, b) -> b.getValue().compareTo(a.getValue()));
+        
+        List<Map<String, Object>> frequentElements = new ArrayList<>();
+        for (int i = 0; i < Math.min(5, sortedInteractions.size()); i++) {
+            Map.Entry<String, Integer> entry = sortedInteractions.get(i);
+            Map<String, Object> elementInfo = new HashMap<>();
+            elementInfo.put("key", entry.getKey());
+            elementInfo.put("count", entry.getValue());
+            frequentElements.add(elementInfo);
+        }
+        
+        insights.put("frequentElements", frequentElements);
+        
+        // Analyze interaction patterns
+        Map<String, Object> patterns = analyzeInteractionPatterns(events);
+        insights.put("patterns", patterns);
+        
+        // Generate recommendations for improving test stability
+        List<Map<String, Object>> recommendations = generateTestRecommendations(session, events);
+        insights.put("recommendations", recommendations);
+        
+        return insights;
+    }
+    
+    /**
+     * Analyze interaction patterns in a sequence of events
+     */
+    private Map<String, Object> analyzeInteractionPatterns(List<RecordingEvent> events) {
+        Map<String, Object> patterns = new HashMap<>();
+        
+        if (events.size() < 2) {
+            return patterns;
+        }
+        
+        // Analyze common sequences
+        Map<String, Integer> sequenceCounts = new HashMap<>();
+        List<String> sequence = new ArrayList<>();
+        
+        for (int i = 0; i < events.size() - 1; i++) {
+            RecordingEvent current = events.get(i);
+            RecordingEvent next = events.get(i + 1);
+            
+            if (current.getType() == null || next.getType() == null) {
+                continue;
+            }
+            
+            String seqKey = current.getType() + "->" + next.getType();
+            sequenceCounts.put(seqKey, sequenceCounts.getOrDefault(seqKey, 0) + 1);
+            sequence.add(current.getType());
+        }
+        
+        if (!events.isEmpty()) {
+            sequence.add(events.get(events.size() - 1).getType());
+        }
+        
+        patterns.put("sequence", sequence);
+        
+        // Find most common sequences
+        List<Map.Entry<String, Integer>> sortedSequences = new ArrayList<>(sequenceCounts.entrySet());
+        sortedSequences.sort((a, b) -> b.getValue().compareTo(a.getValue()));
+        
+        List<Map<String, Object>> commonSequences = new ArrayList<>();
+        for (int i = 0; i < Math.min(3, sortedSequences.size()); i++) {
+            Map.Entry<String, Integer> entry = sortedSequences.get(i);
+            Map<String, Object> seqInfo = new HashMap<>();
+            seqInfo.put("pattern", entry.getKey());
+            seqInfo.put("count", entry.getValue());
+            commonSequences.add(seqInfo);
+        }
+        
+        patterns.put("commonSequences", commonSequences);
+        
+        // Detect form-filling patterns
+        boolean hasFormFilling = false;
+        int inputSequenceCount = 0;
+        for (int i = 0; i < events.size() - 1; i++) {
+            RecordingEvent current = events.get(i);
+            
+            if (current.getType() != null && 
+                (current.getType().equals("input") || current.getType().equals("type"))) {
+                inputSequenceCount++;
+                
+                if (inputSequenceCount >= 3) {
+                    hasFormFilling = true;
+                    break;
+                }
+            } else {
+                inputSequenceCount = 0;
+            }
+        }
+        
+        patterns.put("hasFormFilling", hasFormFilling);
+        
+        // Detect navigation patterns
+        boolean hasNavigation = false;
+        for (int i = 0; i < events.size(); i++) {
+            RecordingEvent event = events.get(i);
+            
+            if (event.getType() != null && event.getType().equals("navigation")) {
+                hasNavigation = true;
+                break;
+            }
+        }
+        
+        patterns.put("hasNavigation", hasNavigation);
+        
+        return patterns;
+    }
+    
+    /**
+     * Generate recommendations for improving test stability
+     */
+    private List<Map<String, Object>> generateTestRecommendations(RecordingSession session, 
+                                                                List<RecordingEvent> events) {
+        List<Map<String, Object>> recommendations = new ArrayList<>();
+        
+        // Check for missing test IDs
+        int testIdCount = 0;
+        int totalElements = 0;
+        
+        for (RecordingEvent event : events) {
+            RecordingEvent.ElementInfo element = event.getElement();
+            if (element == null || element.getAttributes() == null) {
+                continue;
+            }
+            
+            totalElements++;
+            
+            boolean hasTestId = false;
+            for (String attrName : element.getAttributes().keySet()) {
+                if (attrName.startsWith("data-test") || attrName.equals("data-cy") || 
+                    attrName.equals("data-qa") || attrName.equals("data-automation")) {
+                    hasTestId = true;
+                    testIdCount++;
+                    break;
+                }
+            }
+            
+            if (!hasTestId) {
+                Map<String, Object> recommendation = new HashMap<>();
+                recommendation.put("type", "missing_test_id");
+                recommendation.put("severity", "medium");
+                recommendation.put("element", createElementKey(element));
+                recommendation.put("message", "Element lacks a test-specific attribute");
+                recommendation.put("suggestion", "Add data-testid or similar attribute");
+                recommendations.add(recommendation);
+            }
+        }
+        
+        // Check test ID coverage
+        if (totalElements > 0) {
+            double testIdCoverage = (double) testIdCount / totalElements;
+            
+            if (testIdCoverage < 0.5) {
+                Map<String, Object> recommendation = new HashMap<>();
+                recommendation.put("type", "low_test_id_coverage");
+                recommendation.put("severity", "high");
+                recommendation.put("coverage", testIdCoverage);
+                recommendation.put("message", "Low test ID coverage: " + 
+                                  String.format("%.1f%%", testIdCoverage * 100));
+                recommendation.put("suggestion", "Improve test stability by adding more test IDs");
+                recommendations.add(recommendation);
+            }
+        }
+        
+        // Check for dynamic ID patterns
+        Set<String> dynamicIdPatterns = new HashSet<>();
+        
+        for (RecordingEvent event : events) {
+            RecordingEvent.ElementInfo element = event.getElement();
+            if (element == null || element.getId() == null || element.getId().isEmpty()) {
+                continue;
+            }
+            
+            String id = element.getId();
+            
+            // Check for common dynamic ID patterns
+            if (id.matches(".*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}.*")) {
+                dynamicIdPatterns.add("UUID");
+            } else if (id.matches(".*[0-9a-f]{8,}.*")) {
+                dynamicIdPatterns.add("hex");
+            } else if (id.matches(".*\\d{4,}.*")) {
+                dynamicIdPatterns.add("numeric");
+            } else if (id.matches(".*_\\d+$")) {
+                dynamicIdPatterns.add("counter_suffix");
+            }
+        }
+        
+        if (!dynamicIdPatterns.isEmpty()) {
+            Map<String, Object> recommendation = new HashMap<>();
+            recommendation.put("type", "dynamic_ids");
+            recommendation.put("severity", "high");
+            recommendation.put("patterns", dynamicIdPatterns);
+            recommendation.put("message", "Detected potentially dynamic ID patterns: " + 
+                              String.join(", ", dynamicIdPatterns));
+            recommendation.put("suggestion", "Use stable test IDs instead of dynamic IDs");
+            recommendations.add(recommendation);
+        }
+        
+        // Check for xpath usage
+        int xpathCount = 0;
+        
+        for (RecordingEvent event : events) {
+            if (event.getLocators() == null) {
+                continue;
+            }
+            
+            for (RecordingEvent.LocatorInfo locator : event.getLocators()) {
+                if (locator.getType() != null && locator.getType().equals("xpath")) {
+                    xpathCount++;
+                    break;
+                }
+            }
+        }
+        
+        if (xpathCount > events.size() / 3) {
+            Map<String, Object> recommendation = new HashMap<>();
+            recommendation.put("type", "excessive_xpath");
+            recommendation.put("severity", "medium");
+            recommendation.put("count", xpathCount);
+            recommendation.put("message", "Excessive use of XPath locators: " + xpathCount);
+            recommendation.put("suggestion", "Replace XPath with more stable locator strategies");
+            recommendations.add(recommendation);
+        }
+        
+        // Check for form submission workflows
+        boolean hasFormSubmission = false;
+        boolean hasExplicitWaits = false;
+        
+        for (int i = 0; i < events.size() - 1; i++) {
+            RecordingEvent current = events.get(i);
+            RecordingEvent next = events.get(i + 1);
+            
+            if (current.getType() != null && next.getType() != null) {
+                if ((current.getType().equals("click") || current.getType().equals("submit")) && 
+                    current.getElement() != null && current.getElement().getTagName() != null &&
+                    (current.getElement().getTagName().equalsIgnoreCase("button") || 
+                     (current.getElement().getTagName().equalsIgnoreCase("input") && 
+                      current.getElement().getType() != null && 
+                      current.getElement().getType().equalsIgnoreCase("submit")))) {
+                    
+                    hasFormSubmission = true;
+                }
+                
+                if (current.getType().equals("wait") || next.getType().equals("wait")) {
+                    hasExplicitWaits = true;
+                }
+            }
+        }
+        
+        if (hasFormSubmission && !hasExplicitWaits) {
+            Map<String, Object> recommendation = new HashMap<>();
+            recommendation.put("type", "missing_waits");
+            recommendation.put("severity", "high");
+            recommendation.put("message", "Form submission without explicit waits");
+            recommendation.put("suggestion", "Add explicit waits after form submissions for stability");
+            recommendations.add(recommendation);
+        }
+        
+        return recommendations;
+    }
+    
+    /**
+     * Train the service with new data samples
+     */
+    public void trainWithSamples(List<RecordingSession> sessions) {
+        if (sessions == null || sessions.isEmpty()) {
+            return;
+        }
+        
+        Map<String, Integer> elementTypeCount = new HashMap<>();
+        Set<String> newButtonTerms = new HashSet<>();
+        Set<String> newLinkTerms = new HashSet<>();
+        Set<String> newInputTerms = new HashSet<>();
+        Set<String> newMenuTerms = new HashSet<>();
+        Set<String> newHeaderTerms = new HashSet<>();
+        Set<String> newActionVerbs = new HashSet<>();
+        
+        // Process sessions
+        for (RecordingSession session : sessions) {
+            if (session.getEvents() == null) {
+                continue;
+            }
+            
+            for (RecordingEvent event : session.getEvents()) {
+                RecordingEvent.ElementInfo element = event.getElement();
+                if (element == null) {
+                    continue;
+                }
+                
+                String elementType = determineElementType(element);
+                if (elementType != null) {
+                    elementTypeCount.put(elementType, elementTypeCount.getOrDefault(elementType, 0) + 1);
+                }
+                
+                // Extract and learn text patterns
+                if (element.getText() != null && !element.getText().isEmpty()) {
+                    String text = element.getText().toLowerCase();
+                    String[] words = text.split("\\s+");
+                    
+                    // Learn patterns based on element type and event
+                    if (elementType != null) {
+                        if (elementType.equals("button")) {
+                            for (String word : words) {
+                                if (word.length() >= 3 && !buttonTerms.contains(word)) {
+                                    newButtonTerms.add(word);
+                                }
+                            }
+                        } else if (elementType.equals("link")) {
+                            for (String word : words) {
+                                if (word.length() >= 3 && !linkTerms.contains(word)) {
+                                    newLinkTerms.add(word);
+                                }
+                            }
+                        } else if (elementType.equals("input")) {
+                            for (String word : words) {
+                                if (word.length() >= 3 && !inputTerms.contains(word)) {
+                                    newInputTerms.add(word);
+                                }
+                            }
+                        } else if (elementType.equals("menu")) {
+                            for (String word : words) {
+                                if (word.length() >= 3 && !menuTerms.contains(word)) {
+                                    newMenuTerms.add(word);
+                                }
+                            }
+                        } else if (elementType.equals("header")) {
+                            for (String word : words) {
+                                if (word.length() >= 3 && !headerTerms.contains(word)) {
+                                    newHeaderTerms.add(word);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Learn action verbs from events
+                    if (event.getType() != null && event.getType().equals("click")) {
+                        for (String word : words) {
+                            if (word.length() >= 3 && !actionVerbs.contains(word)) {
+                                newActionVerbs.add(word);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Filter and add new terms
+        addNewFilteredTerms(buttonTerms, newButtonTerms, 2);
+        addNewFilteredTerms(linkTerms, newLinkTerms, 2);
+        addNewFilteredTerms(inputTerms, newInputTerms, 2);
+        addNewFilteredTerms(menuTerms, newMenuTerms, 2);
+        addNewFilteredTerms(headerTerms, newHeaderTerms, 2);
+        addNewFilteredTerms(actionVerbs, newActionVerbs, 2);
+        
+        // Update dictionaries
+        updateDictionaries();
+        
+        logger.info("Trained with {} sessions, added new terms: buttons={}, links={}, inputs={}, menus={}, headers={}, actions={}",
+            sessions.size(), newButtonTerms.size(), newLinkTerms.size(), newInputTerms.size(), 
+            newMenuTerms.size(), newHeaderTerms.size(), newActionVerbs.size());
+    }
+    
+    /**
+     * Add new filtered terms to a set (only if they appear multiple times)
+     */
+    private void addNewFilteredTerms(Set<String> existingTerms, Set<String> newTerms, int minCount) {
+        // In a real implementation, we would track occurrence counts and filter by frequency
+        // For this implementation, we'll just add all new terms
+        existingTerms.addAll(newTerms);
+    }
+    
+    /**
+     * Update dictionaries with new learned terms
+     */
+    private void updateDictionaries() {
+        try {
+            // Update button terms dictionary
+            updateDictionaryFile("buttons.txt", buttonTerms);
+            
+            // Update link terms dictionary
+            updateDictionaryFile("links.txt", linkTerms);
+            
+            // Update input terms dictionary
+            updateDictionaryFile("inputs.txt", inputTerms);
+            
+            // Update menu terms dictionary
+            updateDictionaryFile("menus.txt", menuTerms);
+            
+            // Update header terms dictionary
+            updateDictionaryFile("headers.txt", headerTerms);
+            
+            // Update action verbs dictionary
+            updateDictionaryFile("actions.txt", actionVerbs);
+            
+            logger.info("Updated dictionaries");
+        } catch (Exception e) {
+            logger.error("Failed to update dictionaries", e);
+        }
+    }
+    
+    /**
+     * Update a dictionary file with new terms
+     */
+    private void updateDictionaryFile(String filename, Set<String> terms) throws IOException {
+        Path filePath = Paths.get(dictionaryPath, filename);
+        
+        // Sort terms for better readability
+        List<String> sortedTerms = new ArrayList<>(terms);
+        Collections.sort(sortedTerms);
+        
+        // Write all terms to file
+        Files.write(filePath, sortedTerms);
+    }
+    
+    /**
+     * Reset the element recognition service to defaults
+     */
+    public void reset() {
+        // Clear caches and learned data
+        elementScoreCache.clear();
+        historicalElements.clear();
+        elementFrequency.clear();
+        
+        // Reset dictionaries to defaults
+        buttonTerms.clear();
+        linkTerms.clear();
+        inputTerms.clear();
+        menuTerms.clear();
+        headerTerms.clear();
+        actionVerbs.clear();
+        
+        initializeDefaultDictionaries();
+        
+        logger.info("Reset ElementRecognitionService to defaults");
+    }
+}
+
