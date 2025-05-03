@@ -2562,6 +2562,7 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
 
 export default BrowserFrame;
 
+
 // cstestforge/frontend/src/components/recorder/ActionToolbar.tsx
 
 import React, { useState } from 'react';
