@@ -20,7 +20,7 @@ class ${className} extends CSBaseTest {
     /**
      * Before each test method initialization
      */
-    async beforeEach(): Promise<void> {
+    async beforeEach() {
         // Initialize browser and context
         await this.initializeBrowser('${browserType}');
         
@@ -41,7 +41,7 @@ class ${className} extends CSBaseTest {
     /**
      * Main test method
      */
-    async test${utils.capitalizeFirstLetter($testMethodName)}(): Promise<void> {
+    async test${utils.capitalizeFirstLetter($testMethodName)}() {
         // Start test execution
         CSReporter.startTest('${testName}');
         
@@ -169,7 +169,7 @@ ${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
     /**
      * After each test method cleanup
      */
-    async afterEach(): Promise<void> {
+    async afterEach() {
         if (this.page) {
             await this.page.close();
             CSReporter.logInfo('Page closed');
