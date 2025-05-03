@@ -1,0 +1,303 @@
+cstestforge/
+├── pom.xml                                           # Parent Maven POM file
+│
+├── frontend/                                         # Frontend React/TypeScript application
+│   ├── pom.xml                                       # Frontend Maven module
+│   ├── package.json                                  # NPM dependencies
+│   ├── tsconfig.json                                 # TypeScript configuration
+│   ├── webpack.config.js                             # Webpack configuration
+│   │
+│   ├── public/                                       # Public assets
+│   │   ├── index.html                                # Main HTML file
+│   │   ├── favicon.ico                               # Favicon
+│   │   └── assets/                                   # Static assets
+│   │       ├── images/                               # Image files
+│   │       │   └── logo.png                          # Application logo
+│   │       └── fonts/                                # Font files
+│   │
+│   └── src/                                          # Frontend source code
+│       ├── index.tsx                                 # Entry point
+│       ├── App.tsx                                   # Main application component
+│       ├── routes.tsx                                # Route definitions
+│       │
+│       ├── assets/                                   # Frontend assets
+│       │   ├── icons/                                # Icon files
+│       │   └── styles/                               # CSS stylesheets
+│       │       ├── common/                           # Common component styles
+│       │       │   ├── button.css                    # Button component styles
+│       │       │   ├── dropdown.css                  # Dropdown component styles
+│       │       │   ├── input.css                     # Input component styles
+│       │       │   ├── modal.css                     # Modal component styles
+│       │       │   ├── navbar.css                    # Navbar component styles
+│       │       │   ├── sidebar.css                   # Sidebar component styles
+│       │       │   └── tabs.css                      # Tabs component styles
+│       │       ├── pages/                            # Page-specific styles
+│       │       │   ├── homePage.css                  # Home page styles
+│       │       │   ├── recorderPage.css              # Recorder page styles
+│       │       │   ├── editorPage.css                # Editor page styles
+│       │       │   ├── runnerPage.css                # Runner page styles
+│       │       │   ├── reportsPage.css               # Reports page styles
+│       │       │   └── settingsPage.css              # Settings page styles
+│       │       ├── recorder.css                      # Recorder component styles
+│       │       ├── browser-frame.css                 # Browser frame component styles
+│       │       ├── element-highlighter.css           # Element highlighter styles
+│       │       ├── steps-list.css                    # Steps list component styles
+│       │       ├── action-toolbar.css                # Action toolbar component styles
+│       │       └── recorder-settings.css             # Recorder settings component styles
+│       │
+│       ├── components/                               # React components
+│       │   ├── common/                               # Common reusable components
+│       │   │   ├── Button.tsx                        # Button component
+│       │   │   ├── Dropdown.tsx                      # Dropdown component
+│       │   │   ├── Input.tsx                         # Input component
+│       │   │   ├── Modal.tsx                         # Modal component
+│       │   │   ├── NavBar.tsx                        # Navigation bar component
+│       │   │   ├── Sidebar.tsx                       # Sidebar component
+│       │   │   └── Tabs.tsx                          # Tabs component
+│       │   │
+│       │   ├── recorder/                             # Recorder-specific components
+│       │   │   ├── ActionToolbar.tsx                 # Action toolbar component
+│       │   │   ├── BrowserFrame.tsx                  # Browser frame component
+│       │   │   ├── ElementHighlighter.tsx            # Element highlighter component
+│       │   │   ├── RecorderControls.tsx              # Recorder controls component
+│       │   │   ├── RecorderSettings.tsx              # Recorder settings component
+│       │   │   └── StepsList.tsx                     # Steps list component
+│       │   │
+│       │   ├── editor/                               # Editor-specific components
+│       │   │   ├── CodeEditor.tsx                    # Code editor component
+│       │   │   ├── StepEditor.tsx                    # Step editor component
+│       │   │   ├── TestDetails.tsx                   # Test details component
+│       │   │   └── VariableManager.tsx               # Variable manager component
+│       │   │
+│       │   ├── runner/                               # Runner-specific components
+│       │   │   ├── ExecutionControls.tsx             # Execution controls component
+│       │   │   ├── LiveLogs.tsx                      # Live logs component
+│       │   │   ├── TestSelector.tsx                  # Test selector component
+│       │   │   └── TestStatus.tsx                    # Test status component
+│       │   │
+│       │   └── reports/                              # Reports-specific components
+│       │       ├── Dashboard.tsx                     # Dashboard component
+│       │       ├── MetricsCard.tsx                   # Metrics card component
+│       │       ├── TestResultDetails.tsx             # Test result details component
+│       │       └── TestResultsList.tsx               # Test results list component
+│       │
+│       ├── pages/                                    # Page components
+│       │   ├── HomePage.tsx                          # Home page
+│       │   ├── RecorderPage.tsx                      # Recorder page
+│       │   ├── EditorPage.tsx                        # Editor page
+│       │   ├── RunnerPage.tsx                        # Runner page
+│       │   ├── ReportsPage.tsx                       # Reports page
+│       │   └── SettingsPage.tsx                      # Settings page
+│       │
+│       ├── services/                                 # API and utility services
+│       │   ├── api.ts                                # Core API service
+│       │   ├── recordingService.ts                   # Recording service
+│       │   ├── codeGenerationService.ts              # Code generation service
+│       │   ├── executionService.ts                   # Test execution service
+│       │   ├── projectService.ts                     # Project management service
+│       │   ├── reportService.ts                      # Reporting service
+│       │   └── fileSystemService.ts                  # File system service
+│       │
+│       ├── utils/                                    # Utility functions
+│       │   ├── browserUtils.ts                       # Browser-related utilities
+│       │   ├── codeFormatter.ts                      # Code formatting utilities
+│       │   ├── elementFinder.ts                      # Element finding utilities
+│       │   ├── locatorUtils.ts                       # Locator generation utilities
+│       │   └── testDataUtils.ts                      # Test data utilities
+│       │
+│       ├── store/                                    # Redux store
+│       │   ├── index.ts                              # Store configuration
+│       │   ├── actions/                              # Redux actions
+│       │   │   ├── recordingActions.ts               # Recording actions
+│       │   │   ├── projectActions.ts                 # Project actions
+│       │   │   ├── executionActions.ts               # Execution actions
+│       │   │   └── uiActions.ts                      # UI actions
+│       │   └── reducers/                             # Redux reducers
+│       │       ├── recordingReducer.ts               # Recording reducer
+│       │       ├── projectReducer.ts                 # Project reducer
+│       │       ├── executionReducer.ts               # Execution reducer
+│       │       └── uiReducer.ts                      # UI reducer
+│       │
+│       ├── contexts/                                 # React contexts
+│       │   ├── RecorderContext.tsx                   # Recorder context
+│       │   ├── ProjectContext.tsx                    # Project context
+│       │   └── UserContext.tsx                       # User context
+│       │
+│       ├── hooks/                                    # Custom React hooks
+│       │   ├── useRecording.ts                       # Recording hook
+│       │   ├── useTestExecution.ts                   # Test execution hook
+│       │   └── useCodeGeneration.ts                  # Code generation hook
+│       │
+│       └── types/                                    # TypeScript type definitions
+│           ├── recorderTypes.ts                      # Recorder-related types
+│           ├── projectTypes.ts                       # Project-related types
+│           ├── executionTypes.ts                     # Execution-related types
+│           └── reportTypes.ts                        # Report-related types
+│
+├── backend/                                          # Backend Spring Boot application
+│   ├── pom.xml                                       # Backend Maven module
+│   │
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/com/cstestforge/
+│   │   │   │   ├── CSTestForgeApplication.java       # Main application class
+│   │   │   │   │
+│   │   │   │   ├── config/                           # Configuration classes
+│   │   │   │   │   ├── WebConfig.java                # Web configuration
+│   │   │   │   │   ├── SecurityConfig.java           # Security configuration
+│   │   │   │   │   └── WebSocketConfig.java          # WebSocket configuration
+│   │   │   │   │
+│   │   │   │   ├── controller/                       # REST controllers
+│   │   │   │   │   ├── RecorderController.java       # Recorder controller
+│   │   │   │   │   ├── CodeGenerationController.java # Code generation controller
+│   │   │   │   │   ├── TestExecutionController.java  # Test execution controller
+│   │   │   │   │   ├── ProjectController.java        # Project controller
+│   │   │   │   │   └── ReportController.java         # Report controller
+│   │   │   │   │
+│   │   │   │   ├── service/                          # Service classes
+│   │   │   │   │   ├── recorder/                     # Recorder services
+│   │   │   │   │   │   ├── RecorderService.java      # Recorder service interface
+│   │   │   │   │   │   ├── RecorderServiceImpl.java  # Recorder service implementation
+│   │   │   │   │   │   ├── BrowserSessionService.java # Browser session service
+│   │   │   │   │   │   ├── EventCaptureService.java  # Event capture service
+│   │   │   │   │   │   └── RecorderWebSocketHandler.java # WebSocket handler
+│   │   │   │   │   │
+│   │   │   │   │   ├── ai/                           # AI services
+│   │   │   │   │   │   ├── ElementRecognitionService.java # Element recognition service
+│   │   │   │   │   │   ├── SmartLocatorService.java  # Smart locator service
+│   │   │   │   │   │   └── CodeOptimizationService.java # Code optimization service
+│   │   │   │   │   │
+│   │   │   │   │   ├── codegen/                      # Code generation services
+│   │   │   │   │   │   ├── CodeGenerationService.java # Code generation service
+│   │   │   │   │   │   ├── TestNGCodeGenerator.java  # TestNG code generator
+│   │   │   │   │   │   ├── BDDCodeGenerator.java     # BDD code generator
+│   │   │   │   │   │   ├── PageObjectGenerator.java  # Page object generator
+│   │   │   │   │   │   └── FrameworkGenerator.java   # Framework generator
+│   │   │   │   │   │
+│   │   │   │   │   ├── execution/                    # Execution services
+│   │   │   │   │   │   ├── TestExecutionService.java # Test execution service
+│   │   │   │   │   │   ├── SeleniumExecutor.java     # Selenium executor
+│   │   │   │   │   │   └── PlaywrightExecutor.java   # Playwright executor
+│   │   │   │   │   │
+│   │   │   │   │   ├── project/                      # Project services
+│   │   │   │   │   │   ├── ProjectService.java       # Project service
+│   │   │   │   │   │   ├── FileSystemService.java    # File system service
+│   │   │   │   │   │   └── ExportService.java        # Export service
+│   │   │   │   │   │
+│   │   │   │   │   └── report/                       # Report services
+│   │   │   │   │       ├── ReportService.java        # Report service
+│   │   │   │   │       ├── TestResultProcessor.java  # Test result processor
+│   │   │   │   │       └── MetricsService.java       # Metrics service
+│   │   │   │   │
+│   │   │   │   ├── model/                            # Domain models
+│   │   │   │   │   ├── common/                       # Common models
+│   │   │   │   │   │   └── ApiResponse.java          # API response wrapper
+│   │   │   │   │   │
+│   │   │   │   │   ├── recorder/                     # Recorder models
+│   │   │   │   │   │   ├── RecordingSession.java     # Recording session model
+│   │   │   │   │   │   ├── RecordingEvent.java       # Recording event model
+│   │   │   │   │   │   ├── RecordingEventBatch.java  # Recording event batch model
+│   │   │   │   │   │   ├── ElementInfo.java          # Element information model
+│   │   │   │   │   │   ├── BrowserInfo.java          # Browser information model
+│   │   │   │   │   │   ├── RecordingRequest.java     # Recording request model
+│   │   │   │   │   │   └── RecordingResult.java      # Recording result model
+│   │   │   │   │   │
+│   │   │   │   │   ├── codegen/                      # Code generation models
+│   │   │   │   │   │   ├── CodeGenerationRequest.java # Code generation request model
+│   │   │   │   │   │   ├── GeneratedTest.java        # Generated test model
+│   │   │   │   │   │   ├── TestStep.java             # Test step model
+│   │   │   │   │   │   └── PageObject.java           # Page object model
+│   │   │   │   │   │
+│   │   │   │   │   ├── execution/                    # Execution models
+│   │   │   │   │   │   ├── ExecuteTestRequest.java   # Execute test request model
+│   │   │   │   │   │   ├── TestExecutionResult.java  # Test execution result model
+│   │   │   │   │   │   ├── TestCaseResult.java       # Test case result model
+│   │   │   │   │   │   ├── TestStepResult.java       # Test step result model
+│   │   │   │   │   │   └── ExecutionMetrics.java     # Execution metrics model
+│   │   │   │   │   │
+│   │   │   │   │   ├── project/                      # Project models
+│   │   │   │   │   │   ├── Project.java              # Project model
+│   │   │   │   │   │   ├── TestFile.java             # Test file model
+│   │   │   │   │   │   ├── TestSuite.java            # Test suite model
+│   │   │   │   │   │   ├── TestCase.java             # Test case model
+│   │   │   │   │   │   └── ProjectStructure.java     # Project structure model
+│   │   │   │   │   │
+│   │   │   │   │   └── report/                       # Report models
+│   │   │   │   │       ├── TestReport.java           # Test report model
+│   │   │   │   │       ├── TestCaseReport.java       # Test case report model
+│   │   │   │   │       ├── StepReport.java           # Step report model
+│   │   │   │   │       ├── Screenshot.java           # Screenshot model
+│   │   │   │   │       └── DashboardSummary.java     # Dashboard summary model
+│   │   │   │   │
+│   │   │   │   ├── framework/                        # Framework base classes
+│   │   │   │   │   ├── selenium/                     # Selenium framework
+│   │   │   │   │   │   ├── CSBaseTest.java           # Base test class
+│   │   │   │   │   │   ├── CSBasePage.java           # Base page class
+│   │   │   │   │   │   ├── CSElement.java            # Element wrapper class
+│   │   │   │   │   │   ├── CSFindBy.java             # FindBy annotation
+│   │   │   │   │   │   ├── CSWaitStrategy.java       # Wait strategy
+│   │   │   │   │   │   ├── CSTestStep.java           # Test step interface
+│   │   │   │   │   │   └── CSReporter.java           # Custom reporter
+│   │   │   │   │   │
+│   │   │   │   │   └── playwright/                   # Playwright framework
+│   │   │   │   │       ├── CSBaseTest.java           # Base test class
+│   │   │   │   │       ├── CSBasePage.java           # Base page class
+│   │   │   │   │       ├── CSElement.java            # Element wrapper class
+│   │   │   │   │       ├── CSFindBy.java             # FindBy annotation
+│   │   │   │   │       ├── CSWaitStrategy.java       # Wait strategy
+│   │   │   │   │       ├── CSTestStep.java           # Test step interface
+│   │   │   │   │       └── CSReporter.java           # Custom reporter
+│   │   │   │   │
+│   │   │   │   └── util/                             # Utility classes
+│   │   │   │       ├── BrowserUtils.java             # Browser utilities
+│   │   │   │       ├── CodeFormatter.java            # Code formatting utilities
+│   │   │   │       ├── ElementFinder.java            # Element finding utilities
+│   │   │   │       ├── LocatorUtils.java             # Locator utilities
+│   │   │   │       └── TestDataUtils.java            # Test data utilities
+│   │   │   │
+│   │   │   └── resources/
+│   │   │       ├── application.properties            # Application properties
+│   │   │       ├── application-dev.properties        # Development properties
+│   │   │       ├── application-prod.properties       # Production properties
+│   │   │       │
+│   │   │       ├── static/                           # Static resources
+│   │   │       │   ├── js/                           # JavaScript resources
+│   │   │       │   │   └── recorder-injector.js      # Recorder injector script
+│   │   │       │   └── css/                          # CSS resources
+│   │   │       │
+│   │   │       └── templates/                        # Velocity templates
+│   │   │           ├── codegen/                      # Code generation templates
+│   │   │           │   ├── selenium/                 # Selenium templates
+│   │   │           │   │   ├── java/                 # Java templates
+│   │   │           │   │   │   ├── testng.vm         # TestNG template
+│   │   │           │   │   │   └── bdd.vm            # BDD template
+│   │   │           │   │   └── typescript/           # TypeScript templates
+│   │   │           │   │       ├── testng.vm         # TestNG template
+│   │   │           │   │       └── bdd.vm            # BDD template
+│   │   │           │   │
+│   │   │           │   └── playwright/               # Playwright templates
+│   │   │           │       ├── java/                 # Java templates
+│   │   │           │       │   ├── testng.vm         # TestNG template
+│   │   │           │       │   └── bdd.vm            # BDD template
+│   │   │           │       └── typescript/           # TypeScript templates
+│   │   │           │           ├── testng.vm         # TestNG template
+│   │   │           │           └── bdd.vm            # BDD template
+│   │   │           │
+│   │   │           └── reports/                      # Report templates
+│   │   │               ├── html-report.vm            # HTML report template
+│   │   │               ├── pdf-report.vm             # PDF report template
+│   │   │               └── xml-report.vm             # XML report template
+│   │   │
+│   │   └── test/                                     # Test directory
+│   │       └── java/com/cstestforge/
+│   │           ├── controller/                       # Controller tests
+│   │           ├── service/                          # Service tests
+│   │           └── util/                             # Utility tests
+│   │
+│   └── target/                                       # Build output directory
+│
+└── docs/                                             # Documentation
+    ├── architecture/                                 # Architecture documentation
+    ├── api/                                          # API documentation
+    ├── user-guide/                                   # User guide
+    └── development-guide/                            # Development guide
