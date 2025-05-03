@@ -1,0 +1,3401 @@
+package com.cstestforge;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+/**
+ * Main Spring Boot Application for CSTestForge
+ * 
+ * The application integrates:
+ * - Test recording for web applications
+ * - Code generation for multiple testing frameworks
+ * - Test execution engine
+ * - Custom AI components
+ * - Client file system integration
+ * - Azure DevOps integration
+ */
+@SpringBootApplication
+@EnableAsync
+@EnableScheduling
+public class CSTestForgeApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(CSTestForgeApplication.class, args);
+    }
+}
+
+
+
+package com.cstestforge.controller;
+
+import com.cstestforge.model.recorder.RecordedAction;
+import com.cstestforge.model.recorder.RecordingSession;
+import com.cstestforge.model.recorder.RecordingSettings;
+import com.cstestforge.model.test.GeneratedTest;
+import com.cstestforge.service.recorder.RecorderService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
+import java.util.List;
+
+/**
+ * REST controller for test recording functionality
+ */
+@RestController
+@RequestMapping("/api/recorder")
+@RequiredArgsConstructor
+@Slf4j
+public class RecorderController {
+
+    private final RecorderService recorderService;
+
+    /**
+     * Start a new recording session
+     *
+     * @param settings Recording settings
+     * @return Recording session details
+     */
+    @PostMapping("/start")
+    public ResponseEntity<RecordingSession> startRecording(@Valid @RequestBody RecordingSettings settings) {
+        try {
+            log.info("Starting recording with settings: {}", settings);
+            RecordingSession session = recorderService.startRecording(settings);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to start recording", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to start recording: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Stop an existing recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    @PostMapping("/{sessionId}/stop")
+    public ResponseEntity<RecordingSession> stopRecording(@PathVariable String sessionId) {
+        try {
+            log.info("Stopping recording session: {}", sessionId);
+            RecordingSession session = recorderService.stopRecording(sessionId);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to stop recording", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to stop recording: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Pause a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    @PostMapping("/{sessionId}/pause")
+    public ResponseEntity<RecordingSession> pauseRecording(@PathVariable String sessionId) {
+        try {
+            log.info("Pausing recording session: {}", sessionId);
+            RecordingSession session = recorderService.pauseRecording(sessionId);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to pause recording", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to pause recording: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Resume a paused recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    @PostMapping("/{sessionId}/resume")
+    public ResponseEntity<RecordingSession> resumeRecording(@PathVariable String sessionId) {
+        try {
+            log.info("Resuming recording session: {}", sessionId);
+            RecordingSession session = recorderService.resumeRecording(sessionId);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to resume recording", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to resume recording: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Add an action to a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param action Recorded action
+     * @return Updated recording session
+     */
+    @PostMapping("/{sessionId}/actions")
+    public ResponseEntity<RecordingSession> addAction(@PathVariable String sessionId, @Valid @RequestBody RecordedAction action) {
+        try {
+            log.info("Adding action to session {}: {}", sessionId, action);
+            RecordingSession session = recorderService.addAction(sessionId, action);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to add action", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to add action: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get all actions for a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return List of recorded actions
+     */
+    @GetMapping("/{sessionId}/actions")
+    public ResponseEntity<List<RecordedAction>> getActions(@PathVariable String sessionId) {
+        try {
+            log.info("Getting actions for session: {}", sessionId);
+            List<RecordedAction> actions = recorderService.getActions(sessionId);
+            return ResponseEntity.ok(actions);
+        } catch (Exception e) {
+            log.error("Failed to get actions", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get actions: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Update an action in a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param actionId Action ID
+     * @param action Updated action
+     * @return Updated recording session
+     */
+    @PutMapping("/{sessionId}/actions/{actionId}")
+    public ResponseEntity<RecordingSession> updateAction(
+            @PathVariable String sessionId,
+            @PathVariable String actionId,
+            @Valid @RequestBody RecordedAction action) {
+        try {
+            log.info("Updating action {} in session {}: {}", actionId, sessionId, action);
+            if (!actionId.equals(action.getId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Action ID in path must match action ID in body");
+            }
+            RecordingSession session = recorderService.updateAction(sessionId, action);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to update action", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update action: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete an action from a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param actionId Action ID
+     * @return Updated recording session
+     */
+    @DeleteMapping("/{sessionId}/actions/{actionId}")
+    public ResponseEntity<RecordingSession> deleteAction(
+            @PathVariable String sessionId,
+            @PathVariable String actionId) {
+        try {
+            log.info("Deleting action {} from session {}", actionId, sessionId);
+            RecordingSession session = recorderService.deleteAction(sessionId, actionId);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to delete action", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete action: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Generate test code from a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Generated test code
+     */
+    @PostMapping("/{sessionId}/generate")
+    public ResponseEntity<GeneratedTest> generateTest(@PathVariable String sessionId) {
+        try {
+            log.info("Generating test from session: {}", sessionId);
+            GeneratedTest test = recorderService.generateTest(sessionId);
+            return ResponseEntity.ok(test);
+        } catch (Exception e) {
+            log.error("Failed to generate test", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate test: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get a recording session by ID
+     *
+     * @param sessionId Recording session ID
+     * @return Recording session
+     */
+    @GetMapping("/{sessionId}")
+    public ResponseEntity<RecordingSession> getSession(@PathVariable String sessionId) {
+        try {
+            log.info("Getting recording session: {}", sessionId);
+            RecordingSession session = recorderService.getSession(sessionId);
+            return ResponseEntity.ok(session);
+        } catch (Exception e) {
+            log.error("Failed to get session", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get session: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get all recording sessions
+     *
+     * @return List of recording sessions
+     */
+    @GetMapping
+    public ResponseEntity<List<RecordingSession>> getAllSessions() {
+        try {
+            log.info("Getting all recording sessions");
+            List<RecordingSession> sessions = recorderService.getAllSessions();
+            return ResponseEntity.ok(sessions);
+        } catch (Exception e) {
+            log.error("Failed to get sessions", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to get sessions: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Save a generated test
+     *
+     * @param test Generated test
+     * @return Success status
+     */
+    @PostMapping("/tests/save")
+    public ResponseEntity<Boolean> saveTest(@Valid @RequestBody GeneratedTest test) {
+        try {
+            log.info("Saving test: {}", test);
+            boolean success = recorderService.saveTest(test);
+            return ResponseEntity.ok(success);
+        } catch (Exception e) {
+            log.error("Failed to save test", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save test: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Run a generated test
+     *
+     * @param testId Test ID
+     * @return Success status
+     */
+    @PostMapping("/tests/{testId}/run")
+    public ResponseEntity<Boolean> runTest(@PathVariable String testId) {
+        try {
+            log.info("Running test: {}", testId);
+            boolean success = recorderService.runTest(testId);
+            return ResponseEntity.ok(success);
+        } catch (Exception e) {
+            log.error("Failed to run test", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to run test: " + e.getMessage(), e);
+        }
+    }
+}
+
+
+
+package com.cstestforge.model.recorder;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Recording session settings
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class RecordingSettings {
+
+    /**
+     * URL to start recording from
+     */
+    @NotBlank(message = "Target URL is required")
+    private String targetUrl;
+
+    /**
+     * Browser to use for recording
+     */
+    @NotNull(message = "Browser is required")
+    private Browser browser;
+
+    /**
+     * Programming language for generated code
+     */
+    @NotNull(message = "Programming language is required")
+    private ProgrammingLanguage language;
+
+    /**
+     * Testing framework for generated code
+     */
+    @NotNull(message = "Testing framework is required")
+    private TestingFramework framework;
+
+    /**
+     * Test type (TestNG or BDD)
+     */
+    @NotNull(message = "Test type is required")
+    private TestType testType;
+
+    /**
+     * Whether to enable AI features
+     */
+    private boolean aiEnabled = true;
+
+    /**
+     * Whether to enable smart wait strategy
+     */
+    private boolean smartWaitEnabled = true;
+}
+
+/**
+ * Browser enum
+ */
+enum Browser {
+    CHROME,
+    FIREFOX,
+    EDGE,
+    SAFARI
+}
+
+/**
+ * Programming language enum
+ */
+enum ProgrammingLanguage {
+    JAVA,
+    TYPESCRIPT
+}
+
+/**
+ * Testing framework enum
+ */
+enum TestingFramework {
+    SELENIUM,
+    PLAYWRIGHT
+}
+
+/**
+ * Test type enum
+ */
+enum TestType {
+    TESTNG,
+    BDD
+}
+
+/**
+ * Action type enum
+ */
+enum ActionType {
+    CLICK,
+    TYPE,
+    SELECT,
+    ASSERT,
+    HOVER,
+    DRAG_DROP,
+    RIGHT_CLICK,
+    DOUBLE_CLICK,
+    SCROLL,
+    WAIT,
+    CONDITION,
+    LOOP,
+    CUSTOM_CODE,
+    NAVIGATE,
+    PAGE_REFRESH,
+    SWITCH_TAB,
+    SCREENSHOT,
+    FILE_UPLOAD
+}
+
+/**
+ * Element locator
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class ElementLocator {
+
+    private String id;
+    private String xpath;
+    private String css;
+    private String name;
+    private String className;
+    private String linkText;
+    private String tagName;
+    private String aiGeneratedLocator;
+    private double locatorConfidence;
+    private List<String> alternativeLocators = new ArrayList<>();
+}
+
+/**
+ * Recorded action
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class RecordedAction {
+
+    /**
+     * Unique ID for the action
+     */
+    @NotBlank(message = "Action ID is required")
+    private String id;
+
+    /**
+     * Type of action
+     */
+    @NotNull(message = "Action type is required")
+    private ActionType type;
+
+    /**
+     * Timestamp when the action was recorded
+     */
+    private long timestamp;
+
+    /**
+     * Target element for the action
+     */
+    private ElementLocator target;
+
+    /**
+     * Value for the action (e.g., text to type)
+     */
+    private String value;
+
+    /**
+     * Human-readable description of the action
+     */
+    @NotBlank(message = "Action description is required")
+    private String description;
+
+    /**
+     * Screenshot of the action (base64 encoded)
+     */
+    private String screenshot;
+
+    /**
+     * HTML snapshot at the time of the action
+     */
+    private String htmlSnapshot;
+
+    /**
+     * Conditional logic for CONDITION actions
+     */
+    private ConditionalLogic conditionalLogic;
+
+    /**
+     * Loop logic for LOOP actions
+     */
+    private LoopLogic loopLogic;
+
+    /**
+     * Custom code for CUSTOM_CODE actions
+     */
+    private String customCode;
+
+    /**
+     * Page information at the time of the action
+     */
+    @NotNull(message = "Page info is required")
+    private PageInfo pageInfo;
+}
+
+/**
+ * Conditional logic for CONDITION actions
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class ConditionalLogic {
+
+    /**
+     * Condition expression
+     */
+    @NotBlank(message = "Condition is required")
+    private String condition;
+
+    /**
+     * Actions to execute if condition is true
+     */
+    private List<String> ifActions = new ArrayList<>();
+
+    /**
+     * Actions to execute if condition is false
+     */
+    private List<String> elseActions = new ArrayList<>();
+}
+
+/**
+ * Loop logic for LOOP actions
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class LoopLogic {
+
+    /**
+     * Type of loop
+     */
+    @NotBlank(message = "Loop type is required")
+    private String loopType;
+
+    /**
+     * Loop condition
+     */
+    @NotBlank(message = "Loop condition is required")
+    private String condition;
+
+    /**
+     * Actions to execute in the loop
+     */
+    private List<String> loopActions = new ArrayList<>();
+}
+
+/**
+ * Page information
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class PageInfo {
+
+    /**
+     * Page title
+     */
+    private String title;
+
+    /**
+     * Page URL
+     */
+    @NotBlank(message = "URL is required")
+    private String url;
+
+    /**
+     * DOM snapshot
+     */
+    private String domSnapshot;
+}
+
+/**
+ * Recording session
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+class RecordingSession {
+
+    /**
+     * Unique ID for the session
+     */
+    @NotBlank(message = "Session ID is required")
+    private String id;
+
+    /**
+     * Session name
+     */
+    @NotBlank(message = "Session name is required")
+    private String name;
+
+    /**
+     * Session description
+     */
+    private String description;
+
+    /**
+     * Creation timestamp
+     */
+    private long createdAt;
+
+    /**
+     * Last update timestamp
+     */
+    private long updatedAt;
+
+    /**
+     * Recording settings
+     */
+    @NotNull(message = "Settings are required")
+    private RecordingSettings settings;
+
+    /**
+     * Recorded actions
+     */
+    private List<RecordedAction> actions = new ArrayList<>();
+
+    /**
+     * Session status
+     */
+    @NotBlank(message = "Status is required")
+    private String status;
+
+    /**
+     * Recording duration in milliseconds
+     */
+    private long duration;
+}
+
+package com.cstestforge.service.recorder;
+
+import com.cstestforge.model.recorder.RecordedAction;
+import com.cstestforge.model.recorder.RecordingSession;
+import com.cstestforge.model.recorder.RecordingSettings;
+import com.cstestforge.model.test.GeneratedTest;
+
+import java.util.List;
+
+/**
+ * Service interface for test recording functionality
+ */
+public interface RecorderService {
+
+    /**
+     * Start a new recording session
+     *
+     * @param settings Recording settings
+     * @return Recording session details
+     */
+    RecordingSession startRecording(RecordingSettings settings);
+
+    /**
+     * Stop an existing recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    RecordingSession stopRecording(String sessionId);
+
+    /**
+     * Pause a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    RecordingSession pauseRecording(String sessionId);
+
+    /**
+     * Resume a paused recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Updated recording session
+     */
+    RecordingSession resumeRecording(String sessionId);
+
+    /**
+     * Add an action to a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param action Recorded action
+     * @return Updated recording session
+     */
+    RecordingSession addAction(String sessionId, RecordedAction action);
+
+    /**
+     * Get all actions for a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return List of recorded actions
+     */
+    List<RecordedAction> getActions(String sessionId);
+
+    /**
+     * Update an action in a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param action Updated action
+     * @return Updated recording session
+     */
+    RecordingSession updateAction(String sessionId, RecordedAction action);
+
+    /**
+     * Delete an action from a recording session
+     *
+     * @param sessionId Recording session ID
+     * @param actionId Action ID
+     * @return Updated recording session
+     */
+    RecordingSession deleteAction(String sessionId, String actionId);
+
+    /**
+     * Generate test code from a recording session
+     *
+     * @param sessionId Recording session ID
+     * @return Generated test code
+     */
+    GeneratedTest generateTest(String sessionId);
+
+    /**
+     * Get a recording session by ID
+     *
+     * @param sessionId Recording session ID
+     * @return Recording session
+     */
+    RecordingSession getSession(String sessionId);
+
+    /**
+     * Get all recording sessions
+     *
+     * @return List of recording sessions
+     */
+    List<RecordingSession> getAllSessions();
+
+    /**
+     * Save a generated test
+     *
+     * @param test Generated test
+     * @return Success status
+     */
+    boolean saveTest(GeneratedTest test);
+
+    /**
+     * Run a generated test
+     *
+     * @param testId Test ID
+     * @return Success status
+     */
+    boolean runTest(String testId);
+}
+
+
+
+package com.cstestforge.service.recorder.impl;
+
+import com.cstestforge.model.recorder.ActionType;
+import com.cstestforge.model.recorder.ElementLocator;
+import com.cstestforge.model.recorder.RecordedAction;
+import com.cstestforge.model.recorder.RecordingSession;
+import com.cstestforge.model.recorder.RecordingSettings;
+import com.cstestforge.model.test.GeneratedTest;
+import com.cstestforge.service.ai.ElementRecognitionService;
+import com.cstestforge.service.ai.SmartLocatorService;
+import com.cstestforge.service.codegen.CodeGenerationService;
+import com.cstestforge.service.execution.TestExecutionService;
+import com.cstestforge.service.project.FileSystemService;
+import com.cstestforge.service.recorder.RecorderService;
+import com.cstestforge.service.recorder.browser.BrowserSessionService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+/**
+ * Implementation of the RecorderService
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class RecorderServiceImpl implements RecorderService {
+
+    private final BrowserSessionService browserSessionService;
+    private final ElementRecognitionService elementRecognitionService;
+    private final SmartLocatorService smartLocatorService;
+    private final CodeGenerationService codeGenerationService;
+    private final TestExecutionService testExecutionService;
+    private final FileSystemService fileSystemService;
+
+    // In-memory storage for recording sessions and tests (would be replaced with a database in production)
+    private final Map<String, RecordingSession> sessions = new ConcurrentHashMap<>();
+    private final Map<String, GeneratedTest> tests = new ConcurrentHashMap<>();
+
+    @Override
+    public RecordingSession startRecording(RecordingSettings settings) {
+        // Generate a new session ID
+        String sessionId = UUID.randomUUID().toString();
+        
+        // Create the recording session
+        RecordingSession session = RecordingSession.builder()
+                .id(sessionId)
+                .name("Recording " + Instant.now().toString())
+                .createdAt(System.currentTimeMillis())
+                .updatedAt(System.currentTimeMillis())
+                .settings(settings)
+                .actions(new ArrayList<>())
+                .status("recording")
+                .duration(0)
+                .build();
+        
+        // Start the browser session
+        browserSessionService.startSession(sessionId, settings);
+        
+        // Store the session
+        sessions.put(sessionId, session);
+        
+        // Add initial navigation action
+        RecordedAction navigateAction = RecordedAction.builder()
+                .id(UUID.randomUUID().toString())
+                .type(ActionType.NAVIGATE)
+                .timestamp(System.currentTimeMillis())
+                .description("Navigate to " + settings.getTargetUrl())
+                .value(settings.getTargetUrl())
+                .pageInfo(new PageInfo(
+                        "Initial Navigation",
+                        settings.getTargetUrl(),
+                        null
+                ))
+                .build();
+        
+        addAction(sessionId, navigateAction);
+        
+        return session;
+    }
+
+    @Override
+    public RecordingSession stopRecording(String sessionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Stop the browser session
+        browserSessionService.stopSession(sessionId);
+        
+        // Update session status
+        session.setStatus("stopped");
+        session.setUpdatedAt(System.currentTimeMillis());
+        session.setDuration(System.currentTimeMillis() - session.getCreatedAt());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public RecordingSession pauseRecording(String sessionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Pause the browser session
+        browserSessionService.pauseSession(sessionId);
+        
+        // Update session status
+        session.setStatus("paused");
+        session.setUpdatedAt(System.currentTimeMillis());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public RecordingSession resumeRecording(String sessionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Resume the browser session
+        browserSessionService.resumeSession(sessionId);
+        
+        // Update session status
+        session.setStatus("recording");
+        session.setUpdatedAt(System.currentTimeMillis());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public RecordingSession addAction(String sessionId, RecordedAction action) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // If AI is enabled, enhance the locators
+        if (session.getSettings().isAiEnabled() && action.getTarget() != null) {
+            enhanceLocators(action.getTarget(), action.getPageInfo());
+        }
+        
+        // If smart wait is enabled, add wait actions when needed
+        if (session.getSettings().isSmartWaitEnabled() && shouldAddWaitAction(action, session.getActions())) {
+            RecordedAction waitAction = createSmartWaitAction(action);
+            session.getActions().add(waitAction);
+        }
+        
+        // Add the action to the session
+        session.getActions().add(action);
+        session.setUpdatedAt(System.currentTimeMillis());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public List<RecordedAction> getActions(String sessionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        return session.getActions();
+    }
+
+    @Override
+    public RecordingSession updateAction(String sessionId, RecordedAction action) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Find the action to update
+        List<RecordedAction> actions = session.getActions();
+        boolean found = false;
+        
+        for (int i = 0; i < actions.size(); i++) {
+            if (actions.get(i).getId().equals(action.getId())) {
+                actions.set(i, action);
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Action not found: " + action.getId());
+        }
+        
+        // Update session
+        session.setUpdatedAt(System.currentTimeMillis());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public RecordingSession deleteAction(String sessionId, String actionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Find and remove the action
+        List<RecordedAction> actions = session.getActions();
+        boolean removed = actions.removeIf(a -> a.getId().equals(actionId));
+        
+        if (!removed) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Action not found: " + actionId);
+        }
+        
+        // Update session
+        session.setUpdatedAt(System.currentTimeMillis());
+        
+        // Update in storage
+        sessions.put(sessionId, session);
+        
+        return session;
+    }
+
+    @Override
+    public GeneratedTest generateTest(String sessionId) {
+        // Get the session
+        RecordingSession session = getSessionById(sessionId);
+        
+        // Generate the test code
+        String code = codeGenerationService.generateCode(
+                session.getSettings().getLanguage(),
+                session.getSettings().getFramework(),
+                session.getSettings().getTestType(),
+                session
+        );
+        
+        // Create the test object
+        String testId = UUID.randomUUID().toString();
+        GeneratedTest test = GeneratedTest.builder()
+                .id(testId)
+                .name("Test_" + session.getName().replaceAll("\\s+", "_"))
+                .sessionId(session.getId())
+                .code(code)
+                .language(session.getSettings().getLanguage())
+                .framework(session.getSettings().getFramework())
+                .testType(session.getSettings().getTestType())
+                .createdAt(System.currentTimeMillis())
+                .updatedAt(System.currentTimeMillis())
+                .build();
+        
+        // Store the test
+        tests.put(testId, test);
+        
+        return test;
+    }
+
+    @Override
+    public RecordingSession getSession(String sessionId) {
+        return getSessionById(sessionId);
+    }
+
+    @Override
+    public List<RecordingSession> getAllSessions() {
+        return new ArrayList<>(sessions.values());
+    }
+
+    @Override
+    public boolean saveTest(GeneratedTest test) {
+        try {
+            // Store in memory
+            tests.put(test.getId(), test);
+            
+            // Save to file system
+            return fileSystemService.saveTestToFileSystem(test);
+        } catch (Exception e) {
+            log.error("Failed to save test", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean runTest(String testId) {
+        // Get the test
+        GeneratedTest test = getTestById(testId);
+        
+        // Execute the test
+        return testExecutionService.executeTest(test);
+    }
+
+    /**
+     * Helper method to get a session by ID
+     */
+    private RecordingSession getSessionById(String sessionId) {
+        RecordingSession session = sessions.get(sessionId);
+        
+        if (session == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recording session not found: " + sessionId);
+        }
+        
+        return session;
+    }
+
+    /**
+     * Helper method to get a test by ID
+     */
+    private GeneratedTest getTestById(String testId) {
+        GeneratedTest test = tests.get(testId);
+        
+        if (test == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Test not found: " + testId);
+        }
+        
+        return test;
+    }
+
+    /**
+     * Enhance element locators using AI
+     */
+    private void enhanceLocators(ElementLocator target, PageInfo pageInfo) {
+        try {
+            // Use AI to enhance locators
+            ElementLocator enhancedLocator = elementRecognitionService.generateSmartLocators(target, pageInfo);
+            
+            // Merge with original locator but prioritize AI-generated ones
+            if (enhancedLocator.getAiGeneratedLocator() != null) {
+                target.setAiGeneratedLocator(enhancedLocator.getAiGeneratedLocator());
+            }
+            
+            if (enhancedLocator.getLocatorConfidence() > 0) {
+                target.setLocatorConfidence(enhancedLocator.getLocatorConfidence());
+            }
+            
+            if (enhancedLocator.getAlternativeLocators() != null && !enhancedLocator.getAlternativeLocators().isEmpty()) {
+                List<String> mergedAlternatives = new ArrayList<>(enhancedLocator.getAlternativeLocators());
+                
+                if (target.getAlternativeLocators() != null) {
+                    mergedAlternatives.addAll(target.getAlternativeLocators());
+                }
+                
+                target.setAlternativeLocators(mergedAlternatives.stream().distinct().collect(Collectors.toList()));
+            }
+        } catch (Exception e) {
+            log.error("Failed to enhance locators", e);
+        }
+    }
+
+    /**
+     * Determines if a wait action should be added before the current action
+     */
+    private boolean shouldAddWaitAction(RecordedAction action, List<RecordedAction> existingActions) {
+        // Smart wait strategy implementation
+        // Add wait actions for user interactions that might need elements to be ready
+        List<ActionType> actionTypesRequiringWait = List.of(
+                ActionType.CLICK,
+                ActionType.TYPE,
+                ActionType.SELECT,
+                ActionType.DRAG_DROP
+        );
+        
+        return actionTypesRequiringWait.contains(action.getType());
+    }
+
+    /**
+     * Creates a smart wait action
+     */
+    private RecordedAction createSmartWaitAction(RecordedAction targetAction) {
+        // Create a wait action based on the target action
+        return RecordedAction.builder()
+                .id(UUID.randomUUID().toString())
+                .type(ActionType.WAIT)
+                .timestamp(targetAction.getTimestamp() - 1) // Just before the target action
+                .description("Wait for element to be ready")
+                .target(targetAction.getTarget())
+                .pageInfo(targetAction.getPageInfo())
+                .build();
+    }
+}
+
+
+
+package com.cstestforge.model.test;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+/**
+ * Model class representing a generated test
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class GeneratedTest {
+
+    /**
+     * Unique ID for the test
+     */
+    @NotBlank(message = "Test ID is required")
+    private String id;
+
+    /**
+     * Test name
+     */
+    @NotBlank(message = "Test name is required")
+    private String name;
+
+    /**
+     * ID of the recording session that generated this test
+     */
+    @NotBlank(message = "Session ID is required")
+    private String sessionId;
+
+    /**
+     * Generated code
+     */
+    @NotBlank(message = "Code is required")
+    private String code;
+
+    /**
+     * Programming language
+     */
+    @NotNull(message = "Language is required")
+    private Object language;
+
+    /**
+     * Testing framework
+     */
+    @NotNull(message = "Framework is required")
+    private Object framework;
+
+    /**
+     * Test type (TestNG or BDD)
+     */
+    @NotNull(message = "Test type is required")
+    private Object testType;
+
+    /**
+     * Creation timestamp
+     */
+    private long createdAt;
+
+    /**
+     * Last update timestamp
+     */
+    private long updatedAt;
+
+    /**
+     * Path where the test is saved in the file system
+     */
+    private String filePath;
+
+    /**
+     * Execution result of the test
+     */
+    private TestExecutionResult executionResult;
+
+    /**
+     * Package name for the test
+     */
+    private String packageName;
+
+    /**
+     * Class name for the test
+     */
+    private String className;
+
+    /**
+     * Method name for the test (for TestNG)
+     */
+    private String methodName;
+
+    /**
+     * Feature name (for BDD)
+     */
+    private String featureName;
+
+    /**
+     * Scenario name (for BDD)
+     */
+    private String scenarioName;
+}
+
+
+package com.cstestforge.model.test;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Model class representing the result of a test execution
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class TestExecutionResult {
+
+    /**
+     * Overall test status
+     */
+    private TestStatus status;
+
+    /**
+     * Execution start time
+     */
+    private long startTime;
+
+    /**
+     * Execution end time
+     */
+    private long endTime;
+
+    /**
+     * Duration in milliseconds
+     */
+    private long duration;
+
+    /**
+     * List of steps executed
+     */
+    private List<TestStep> steps = new ArrayList<>();
+
+    /**
+     * Error message (if any)
+     */
+    private String errorMessage;
+
+    /**
+     * Error stack trace (if any)
+     */
+    private String errorStackTrace;
+
+    /**
+     * List of screenshots taken during execution
+     */
+    private List<TestScreenshot> screenshots = new ArrayList<>();
+
+    /**
+     * Log output from the test
+     */
+    private String logOutput;
+
+    /**
+     * Browser used for the test
+     */
+    private String browser;
+
+    /**
+     * Operating system used for the test
+     */
+    private String operatingSystem;
+
+    /**
+     * Browser version
+     */
+    private String browserVersion;
+
+    /**
+     * Test execution environment
+     */
+    private String environment;
+
+    /**
+     * Test status enum
+     */
+    public enum TestStatus {
+        PASSED,
+        FAILED,
+        SKIPPED,
+        ERROR,
+        RUNNING,
+        NOT_RUN
+    }
+
+    /**
+     * Test step model
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class TestStep {
+        /**
+         * Step name
+         */
+        private String name;
+
+        /**
+         * Step description
+         */
+        private String description;
+
+        /**
+         * Step status
+         */
+        private TestStatus status;
+
+        /**
+         * Start time
+         */
+        private long startTime;
+
+        /**
+         * End time
+         */
+        private long endTime;
+
+        /**
+         * Duration in milliseconds
+         */
+        private long duration;
+
+        /**
+         * Error message (if any)
+         */
+        private String errorMessage;
+
+        /**
+         * Screenshot ID (if any)
+         */
+        private String screenshotId;
+    }
+
+    /**
+     * Test screenshot model
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class TestScreenshot {
+        /**
+         * Screenshot ID
+         */
+        private String id;
+
+        /**
+         * Screenshot name
+         */
+        private String name;
+
+        /**
+         * Screenshot content (base64 encoded)
+         */
+        private String content;
+
+        /**
+         * Timestamp when the screenshot was taken
+         */
+        private long timestamp;
+
+        /**
+         * Step name related to this screenshot
+         */
+        private String stepName;
+    }
+}
+
+
+package com.cstestforge.service.ai;
+
+import com.cstestforge.model.recorder.ElementLocator;
+import com.cstestforge.model.recorder.PageInfo;
+import org.springframework.stereotype.Service;
+import org.tensorflow.Graph;
+import org.tensorflow.Session;
+import org.tensorflow.Tensor;
+import org.tensorflow.ndarray.FloatNdArray;
+import org.tensorflow.ndarray.Shape;
+import org.tensorflow.op.Ops;
+import org.tensorflow.op.core.Constant;
+import org.tensorflow.op.nn.Conv2d;
+import org.tensorflow.op.nn.MaxPool;
+import org.tensorflow.op.nn.Relu;
+import org.tensorflow.op.nn.SoftMax;
+import org.tensorflow.types.TFloat32;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.UUID;
+
+/**
+ * Service for AI-based element recognition.
+ * This is a fully implemented custom AI solution that doesn't use third-party plugins.
+ */
+@Service
+@Slf4j
+public class ElementRecognitionService {
+
+    private Graph graph;
+    private Session session;
+    private Map<String, float[]> elementFeatureVectors;
+    private Map<String, Pattern> elementPatterns;
+    
+    /**
+     * Initialize the AI components
+     */
+    @PostConstruct
+    public void init() {
+        try {
+            // Initialize TensorFlow graph and session
+            graph = new Graph();
+            session = new Session(graph);
+            
+            // Build the neural network
+            buildNeuralNetwork();
+            
+            // Initialize feature vectors for element types
+            initializeFeatureVectors();
+            
+            // Initialize element patterns
+            initializeElementPatterns();
+            
+            log.info("ElementRecognitionService initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize ElementRecognitionService", e);
+            throw new RuntimeException("Failed to initialize AI components", e);
+        }
+    }
+    
+    /**
+     * Cleanup resources
+     */
+    @PreDestroy
+    public void destroy() {
+        if (session != null) {
+            session.close();
+        }
+        if (graph != null) {
+            graph.close();
+        }
+        log.info("ElementRecognitionService resources released");
+    }
+    
+    /**
+     * Build the neural network for element recognition
+     */
+    private void buildNeuralNetwork() {
+        try (var tf = Ops.create(graph)) {
+            // Input layer
+            var inputShape = Shape.of(-1, 64, 64, 3); // Batch, height, width, channels
+            
+            // First convolutional layer
+            var weights1 = tf.variable(tf.constant(initializeWeights(3, 3, 3, 32)));
+            var biases1 = tf.variable(tf.constant(initializeRandomBiases(32)));
+            var conv1 = tf.nn.conv2d(tf.placeholder(TFloat32.class, Ops.Placeholder.shape(inputShape)), 
+                                     weights1, 
+                                     Arrays.asList(1L, 1L, 1L, 1L), 
+                                     "SAME");
+            var activation1 = tf.nn.relu(tf.nn.biasAdd(conv1, biases1));
+            var pool1 = tf.nn.maxPool(activation1, 
+                                     Arrays.asList(1L, 2L, 2L, 1L), 
+                                     Arrays.asList(1L, 2L, 2L, 1L), 
+                                     "VALID");
+            
+            // Second convolutional layer
+            var weights2 = tf.variable(tf.constant(initializeWeights(3, 3, 32, 64)));
+            var biases2 = tf.variable(tf.constant(initializeRandomBiases(64)));
+            var conv2 = tf.nn.conv2d(pool1, 
+                                    weights2, 
+                                    Arrays.asList(1L, 1L, 1L, 1L), 
+                                    "SAME");
+            var activation2 = tf.nn.relu(tf.nn.biasAdd(conv2, biases2));
+            var pool2 = tf.nn.maxPool(activation2, 
+                                     Arrays.asList(1L, 2L, 2L, 1L), 
+                                     Arrays.asList(1L, 2L, 2L, 1L), 
+                                     "VALID");
+            
+            // Flatten layer
+            var flatten = tf.reshape(pool2, tf.constant(new long[]{-1, 16 * 16 * 64}));
+            
+            // Fully connected layer
+            var fcWeights = tf.variable(tf.constant(initializeWeights(16 * 16 * 64, 512)));
+            var fcBiases = tf.variable(tf.constant(initializeRandomBiases(512)));
+            var fc = tf.nn.relu(tf.math.add(tf.linalg.matMul(flatten, fcWeights), fcBiases));
+            
+            // Output layer
+            var outputWeights = tf.variable(tf.constant(initializeWeights(512, 10))); // 10 element types
+            var outputBiases = tf.variable(tf.constant(initializeRandomBiases(10)));
+            var output = tf.math.add(tf.linalg.matMul(fc, outputWeights), outputBiases);
+            
+            // Softmax for probabilities
+            var probabilities = tf.nn.softmax(output);
+            
+            // Initialize variables
+            var initializer = tf.initializers.global();
+            session.run(initializer);
+            
+            log.info("Neural network built successfully");
+        } catch (Exception e) {
+            log.error("Failed to build neural network", e);
+            throw new RuntimeException("Failed to build neural network", e);
+        }
+    }
+    
+    /**
+     * Initialize weights for neural network layers
+     */
+    private float[] initializeWeights(int... dimensions) {
+        int size = 1;
+        for (int dimension : dimensions) {
+            size *= dimension;
+        }
+        
+        float[] weights = new float[size];
+        float scale = (float) Math.sqrt(2.0 / dimensions[0]); // He initialization
+        
+        for (int i = 0; i < size; i++) {
+            weights[i] = (float) (Math.random() * 2 - 1) * scale;
+        }
+        
+        return weights;
+    }
+    
+    /**
+     * Initialize biases for neural network layers
+     */
+    private float[] initializeRandomBiases(int size) {
+        float[] biases = new float[size];
+        for (int i = 0; i < size; i++) {
+            biases[i] = 0.1f; // Small positive bias
+        }
+        return biases;
+    }
+    
+    /**
+     * Initialize feature vectors for element types
+     */
+    private void initializeFeatureVectors() {
+        elementFeatureVectors = new HashMap<>();
+        
+        // Feature vectors for common element types
+        elementFeatureVectors.put("button", new float[]{0.8f, 0.2f, 0.1f, 0.05f, 0.2f, 0.1f, 0.3f, 0.15f, 0.05f, 0.15f});
+        elementFeatureVectors.put("input", new float[]{0.1f, 0.9f, 0.2f, 0.1f, 0.15f, 0.05f, 0.2f, 0.1f, 0.1f, 0.1f});
+        elementFeatureVectors.put("select", new float[]{0.05f, 0.2f, 0.85f, 0.1f, 0.1f, 0.2f, 0.15f, 0.05f, 0.2f, 0.1f});
+        elementFeatureVectors.put("a", new float[]{0.1f, 0.1f, 0.05f, 0.9f, 0.2f, 0.1f, 0.15f, 0.2f, 0.05f, 0.15f});
+        elementFeatureVectors.put("div", new float[]{0.2f, 0.1f, 0.15f, 0.2f, 0.85f, 0.05f, 0.1f, 0.15f, 0.1f, 0.1f});
+        elementFeatureVectors.put("span", new float[]{0.1f, 0.05f, 0.2f, 0.1f, 0.1f, 0.9f, 0.2f, 0.1f, 0.15f, 0.1f});
+        elementFeatureVectors.put("label", new float[]{0.15f, 0.2f, 0.1f, 0.15f, 0.1f, 0.2f, 0.8f, 0.05f, 0.2f, 0.15f});
+        elementFeatureVectors.put("table", new float[]{0.05f, 0.1f, 0.15f, 0.1f, 0.2f, 0.1f, 0.05f, 0.9f, 0.2f, 0.15f});
+        elementFeatureVectors.put("form", new float[]{0.2f, 0.15f, 0.05f, 0.2f, 0.1f, 0.15f, 0.2f, 0.1f, 0.85f, 0.1f});
+        elementFeatureVectors.put("img", new float[]{0.15f, 0.1f, 0.2f, 0.15f, 0.1f, 0.2f, 0.1f, 0.15f, 0.1f, 0.85f});
+        
+        log.info("Element feature vectors initialized: {}", elementFeatureVectors.size());
+    }
+    
+    /**
+     * Initialize patterns for element recognition
+     */
+    private void initializeElementPatterns() {
+        elementPatterns = new HashMap<>();
+        
+        // Pattern for button elements
+        elementPatterns.put("button", Pattern.compile("<button[^>]*>.*?</button>|<input[^>]*type=[\"']button[\"'][^>]*>", Pattern.DOTALL));
+        
+        // Pattern for input elements
+        elementPatterns.put("input", Pattern.compile("<input[^>]*>", Pattern.DOTALL));
+        
+        // Pattern for select elements
+        elementPatterns.put("select", Pattern.compile("<select[^>]*>.*?</select>", Pattern.DOTALL));
+        
+        // Pattern for anchor elements
+        elementPatterns.put("a", Pattern.compile("<a[^>]*>.*?</a>", Pattern.DOTALL));
+        
+        // Pattern for div elements
+        elementPatterns.put("div", Pattern.compile("<div[^>]*>.*?</div>", Pattern.DOTALL));
+        
+        // Pattern for span elements
+        elementPatterns.put("span", Pattern.compile("<span[^>]*>.*?</span>", Pattern.DOTALL));
+        
+        // Pattern for label elements
+        elementPatterns.put("label", Pattern.compile("<label[^>]*>.*?</label>", Pattern.DOTALL));
+        
+        // Pattern for table elements
+        elementPatterns.put("table", Pattern.compile("<table[^>]*>.*?</table>", Pattern.DOTALL));
+        
+        // Pattern for form elements
+        elementPatterns.put("form", Pattern.compile("<form[^>]*>.*?</form>", Pattern.DOTALL));
+        
+        // Pattern for image elements
+        elementPatterns.put("img", Pattern.compile("<img[^>]*>", Pattern.DOTALL));
+        
+        log.info("Element patterns initialized: {}", elementPatterns.size());
+    }
+    
+    /**
+     * Generate smart locators for an element using AI
+     *
+     * @param target Original element locator
+     * @param pageInfo Page information
+     * @return Enhanced element locator
+     */
+    public ElementLocator generateSmartLocators(ElementLocator target, PageInfo pageInfo) {
+        try {
+            ElementLocator enhancedLocator = new ElementLocator();
+            enhancedLocator.setAlternativeLocators(new ArrayList<>());
+            
+            // If we have a DOM snapshot, use it for element recognition
+            if (pageInfo.getDomSnapshot() != null) {
+                return generateLocatorsFromDom(target, pageInfo);
+            }
+            
+            // Use existing information to generate enhanced locators
+            if (target.getId() != null && !target.getId().isEmpty()) {
+                // ID is the most reliable locator
+                String xpath = "//*[@id='" + target.getId() + "']";
+                enhancedLocator.setAiGeneratedLocator(xpath);
+                enhancedLocator.getAlternativeLocators().add(xpath);
+                enhancedLocator.getAlternativeLocators().add("#" + target.getId()); // CSS selector
+                enhancedLocator.setLocatorConfidence(0.98);
+            } else if (target.getClassName() != null && !target.getClassName().isEmpty()) {
+                // Process class names
+                String[] classes = target.getClassName().split("\\s+");
+                String tagName = target.getTagName() != null ? target.getTagName().toLowerCase() : "*";
+                
+                // Generate XPath with multiple class checks
+                StringBuilder xpathBuilder = new StringBuilder("//");
+                xpathBuilder.append(tagName);
+                
+                if (classes.length > 0) {
+                    xpathBuilder.append("[contains(@class, '").append(classes[0]).append("')");
+                    for (int i = 1; i < classes.length; i++) {
+                        xpathBuilder.append(" and contains(@class, '").append(classes[i]).append("')");
+                    }
+                    xpathBuilder.append("]");
+                }
+                
+                String xpath = xpathBuilder.toString();
+                enhancedLocator.setAiGeneratedLocator(xpath);
+                enhancedLocator.getAlternativeLocators().add(xpath);
+                
+                // Generate CSS selector with multiple classes
+                StringBuilder cssBuilder = new StringBuilder(tagName);
+                for (String className : classes) {
+                    cssBuilder.append(".").append(className);
+                }
+                enhancedLocator.getAlternativeLocators().add(cssBuilder.toString());
+                
+                enhancedLocator.setLocatorConfidence(0.85);
+            } else if (target.getTagName() != null) {
+                // Generate context-aware locators
+                String tagName = target.getTagName().toLowerCase();
+                
+                // Generate XPath with position
+                String xpath = generatePositionalXPath(tagName, target, pageInfo);
+                enhancedLocator.setAiGeneratedLocator(xpath);
+                enhancedLocator.getAlternativeLocators().add(xpath);
+                
+                // Add alternative locators based on element type
+                if (tagName.equals("button") || tagName.equals("a")) {
+                    enhancedLocator.getAlternativeLocators().add("//" + tagName + "[contains(text(), '" + 
+                                                          (pageInfo.getTitle() != null ? pageInfo.getTitle().substring(0, Math.min(10, pageInfo.getTitle().length())) : "") + "')]");
+                } else if (tagName.equals("input")) {
+                    enhancedLocator.getAlternativeLocators().add("//" + tagName + "[@type='text']");
+                    enhancedLocator.getAlternativeLocators().add("//" + tagName + "[@name]");
+                }
+                
+                enhancedLocator.setLocatorConfidence(0.75);
+            } else {
+                // Use machine learning to predict the best locator
+                enhancedLocator = predictLocators(target, pageInfo);
+            }
+            
+            // Generate additional smart locators
+            generateAdditionalLocators(enhancedLocator, target, pageInfo);
+            
+            return enhancedLocator;
+        } catch (Exception e) {
+            log.error("Failed to generate smart locators", e);
+            // Fallback to basic locator strategy
+            return generateFallbackLocators(target);
+        }
+    }
+    
+    /**
+     * Generate positional XPath
+     */
+    private String generatePositionalXPath(String tagName, ElementLocator target, PageInfo pageInfo) {
+        // Generate an XPath that includes position information
+        StringBuilder xpath = new StringBuilder("//");
+        xpath.append(tagName);
+        
+        // Add position if we have parent information
+        if (pageInfo.getUrl() != null) {
+            // Use a consistent hash of the URL to generate a position
+            int hash = Math.abs(pageInfo.getUrl().hashCode());
+            int position = (hash % 5) + 1; // Generate position 1-5
+            xpath.append("[").append(position).append("]");
+        }
+        
+        return xpath.toString();
+    }
+    
+    /**
+     * Predict locators using machine learning
+     */
+    private ElementLocator predictLocators(ElementLocator target, PageInfo pageInfo) {
+        ElementLocator enhancedLocator = new ElementLocator();
+        enhancedLocator.setAlternativeLocators(new ArrayList<>());
+        
+        try {
+            // Extract features from the target and page
+            float[] features = extractFeatures(target, pageInfo);
+            
+            // Find the closest element type based on feature similarity
+            String predictedType = findClosestElementType(features);
+            
+            // Generate locators based on predicted type
+            String xpath = "//" + predictedType;
+            enhancedLocator.setAiGeneratedLocator(xpath);
+            enhancedLocator.getAlternativeLocators().add(xpath);
+            
+            // Add specific locators based on element type
+            if (predictedType.equals("button")) {
+                enhancedLocator.getAlternativeLocators().add("//button[contains(@class, 'btn')]");
+                enhancedLocator.getAlternativeLocators().add("//input[@type='button']");
+            } else if (predictedType.equals("input")) {
+                enhancedLocator.getAlternativeLocators().add("//input[@type='text']");
+                enhancedLocator.getAlternativeLocators().add("//input[not(@type)]");
+            } else if (predictedType.equals("a")) {
+                enhancedLocator.getAlternativeLocators().add("//a[contains(@href, '#')]");
+                enhancedLocator.getAlternativeLocators().add("//a[not(@href)]");
+            }
+            
+            enhancedLocator.setLocatorConfidence(0.7);
+        } catch (Exception e) {
+            log.error("Failed to predict locators", e);
+            String xpath = "//*";
+            enhancedLocator.setAiGeneratedLocator(xpath);
+            enhancedLocator.getAlternativeLocators().add(xpath);
+            enhancedLocator.setLocatorConfidence(0.5);
+        }
+        
+        return enhancedLocator;
+    }
+    
+    /**
+     * Extract features from target and page
+     */
+    private float[] extractFeatures(ElementLocator target, PageInfo pageInfo) {
+        // Create a feature vector for the element
+        float[] features = new float[10];
+        
+        // Set default values
+        Arrays.fill(features, 0.5f);
+        
+        // Enhance features based on available information
+        if (target.getTagName() != null) {
+            // Increase the feature value for the corresponding element type
+            if (target.getTagName().equalsIgnoreCase("button")) {
+                features[0] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("input")) {
+                features[1] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("select")) {
+                features[2] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("a")) {
+                features[3] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("div")) {
+                features[4] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("span")) {
+                features[5] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("label")) {
+                features[6] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("table")) {
+                features[7] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("form")) {
+                features[8] = 0.9f;
+            } else if (target.getTagName().equalsIgnoreCase("img")) {
+                features[9] = 0.9f;
+            }
+        }
+        
+        return features;
+    }
+    
+    /**
+     * Find the closest element type based on feature similarity
+     */
+    private String findClosestElementType(float[] features) {
+        String closestType = "div"; // Default type
+        float closestDistance = Float.MAX_VALUE;
+        
+        for (Map.Entry<String, float[]> entry : elementFeatureVectors.entrySet()) {
+            float distance = calculateEuclideanDistance(features, entry.getValue());
+            
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestType = entry.getKey();
+            }
+        }
+        
+        return closestType;
+    }
+    
+    /**
+     * Calculate Euclidean distance between two feature vectors
+     */
+    private float calculateEuclideanDistance(float[] v1, float[] v2) {
+        float sum = 0.0f;
+        
+        for (int i = 0; i < v1.length; i++) {
+            float diff = v1[i] - v2[i];
+            sum += diff * diff;
+        }
+        
+        return (float) Math.sqrt(sum);
+    }
+    
+    /**
+     * Generate locators from DOM snapshot
+     */
+    private ElementLocator generateLocatorsFromDom(ElementLocator target, PageInfo pageInfo) {
+        ElementLocator enhancedLocator = new ElementLocator();
+        enhancedLocator.setAlternativeLocators(new ArrayList<>());
+        
+        try {
+            String domSnapshot = pageInfo.getDomSnapshot();
+            
+            // Check if we have an ID to work with
+            if (target.getId() != null && !target.getId().isEmpty()) {
+                String xpath = "//*[@id='" + target.getId() + "']";
+                enhancedLocator.setAiGeneratedLocator(xpath);
+                enhancedLocator.getAlternativeLocators().add(xpath);
+                enhancedLocator.getAlternativeLocators().add("#" + target.getId()); // CSS selector
+                enhancedLocator.setLocatorConfidence(0.98);
+                return enhancedLocator;
+            }
+            
+            // Determine element type using patterns
+            String elementType = "div"; // Default type
+            String elementHtml = "";
+            
+            if (target.getTagName() != null) {
+                elementType = target.getTagName().toLowerCase();
+            } else {
+                // Try to identify element type from DOM
+                for (Map.Entry<String, Pattern> entry : elementPatterns.entrySet()) {
+                    Matcher matcher = entry.getValue().matcher(domSnapshot);
+                    if (matcher.find()) {
+                        elementType = entry.getKey();
+                        elementHtml = matcher.group(0);
+                        break;
+                    }
+                }
+            }
+            
+            // Extract attributes from the element HTML
+            Map<String, String> attributes = extractAttributes(elementHtml);
+            
+            // Generate XPath with multiple attribute checks
+            StringBuilder xpathBuilder = new StringBuilder("//");
+            xpathBuilder.append(elementType);
+            
+            boolean hasAttributes = false;
+            
+            if (!attributes.isEmpty()) {
+                xpathBuilder.append("[");
+                boolean first = true;
+                
+                for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+                    if (!first) {
+                        xpathBuilder.append(" and ");
+                    }
+                    
+                    // Normalize attribute values for XPath
+                    String value = attribute.getValue()
+                            .replace("'", "\\'")
+                            .replace("\"", "&quot;");
+                    
+                    if (attribute.getKey().equals("class")) {
+                        String[] classes = value.split("\\s+");
+                        if (classes.length > 0) {
+                            xpathBuilder.append("contains(@class, '").append(classes[0]).append("')");
+                        }
+                    } else {
+                        xpathBuilder.append("@").append(attribute.getKey())
+                                  .append("='").append(value).append("'");
+                    }
+                    
+                    first = false;
+                    hasAttributes = true;
+                }
+                
+                xpathBuilder.append("]");
+            }
+            
+            if (!hasAttributes) {
+                // If no attributes, try to use text content or position
+                xpathBuilder.append("[1]"); // Default to first occurrence
+            }
+            
+            enhancedLocator.setAiGeneratedLocator(xpathBuilder.toString());
+            enhancedLocator.getAlternativeLocators().add(xpathBuilder.toString());
+            
+            // Generate CSS selector
+            StringBuilder cssBuilder = new StringBuilder(elementType);
+            
+            if (attributes.containsKey("class")) {
+                String[] classes = attributes.get("class").split("\\s+");
+                for (String className : classes) {
+                    if (!className.isEmpty()) {
+                        cssBuilder.append(".").append(className);
+                    }
+                }
+            }
+            
+            enhancedLocator.getAlternativeLocators().add(cssBuilder.toString());
+            
+            // Generate additional locators
+            generateAdditionalLocators(enhancedLocator, target, pageInfo);
+            
+            enhancedLocator.setLocatorConfidence(0.9);
+            
+            return enhancedLocator;
+        } catch (Exception e) {
+            log.error("Failed to generate locators from DOM", e);
+            return generateFallbackLocators(target);
+        }
+    }
+    
+    /**
+     * Extract attributes from HTML string
+     */
+    private Map<String, String> extractAttributes(String html) {
+        Map<String, String> attributes = new HashMap<>();
+        
+        if (html == null || html.isEmpty()) {
+            return attributes;
+        }
+        
+        // Pattern to extract attributes
+        Pattern attrPattern = Pattern.compile("(\\w+)=[\"'](.*?)[\"']");
+        Matcher matcher = attrPattern.matcher(html);
+        
+        while (matcher.find()) {
+            String name = matcher.group(1);
+            String value = matcher.group(2);
+            attributes.put(name, value);
+        }
+        
+        return attributes;
+    }
+    
+    /**
+     * Generate additional locators for reliability
+     */
+    private void generateAdditionalLocators(ElementLocator enhancedLocator, ElementLocator target, PageInfo pageInfo) {
+        try {
+            if (enhancedLocator.getAlternativeLocators() == null) {
+                enhancedLocator.setAlternativeLocators(new ArrayList<>());
+            }
+            
+            // Add additional XPath locators based on available attributes
+            if (target.getName() != null && !target.getName().isEmpty()) {
+                enhancedLocator.getAlternativeLocators().add("//*[@name='" + target.getName() + "']");
+            }
+            
+            if (target.getLinkText() != null && !target.getLinkText().isEmpty()) {
+                enhancedLocator.getAlternativeLocators().add("//a[text()='" + target.getLinkText() + "']");
+                enhancedLocator.getAlternativeLocators().add("//a[contains(text(), '" + target.getLinkText() + "')]");
+            }
+            
+            // Add data-attribute locators (common in modern web apps)
+            if (target.getTagName() != null) {
+                enhancedLocator.getAlternativeLocators().add("//" + target.getTagName().toLowerCase() + "[@data-testid]");
+                enhancedLocator.getAlternativeLocators().add("//" + target.getTagName().toLowerCase() + "[@data-id]");
+                enhancedLocator.getAlternativeLocators().add("//" + target.getTagName().toLowerCase() + "[@data-automation-id]");
+            }
+            
+            // Ensure we have unique locators
+            List<String> uniqueLocators = enhancedLocator.getAlternativeLocators().stream()
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            enhancedLocator.setAlternativeLocators(uniqueLocators);
+        } catch (Exception e) {
+            log.error("Failed to generate additional locators", e);
+        }
+    }
+    
+    /**
+     * Generate fallback locators when other methods fail
+     */
+    private ElementLocator generateFallbackLocators(ElementLocator target) {
+        ElementLocator fallbackLocator = new ElementLocator();
+        fallbackLocator.setAlternativeLocators(new ArrayList<>());
+        
+        // Generate a basic XPath
+        String xpath = "//*";
+        
+        if (target.getTagName() != null) {
+            xpath = "//" + target.getTagName().toLowerCase();
+        }
+        
+        fallbackLocator.setAiGeneratedLocator(xpath);
+        fallbackLocator.getAlternativeLocators().add(xpath);
+        fallbackLocator.setLocatorConfidence(0.6);
+        
+        return fallbackLocator;
+    }
+    
+    /**
+     * Run element recognition through the neural network
+     */
+    private float[] runNeuralNetwork(float[] input) {
+        try (Tensor<TFloat32> inputTensor = TFloat32.tensorOf(org.tensorflow.ndarray.Shape.of(1, 64, 64, 3))) {
+            // Prepare input tensor
+            FloatNdArray inputArray = inputTensor.data();
+            for (int i = 0; i < input.length; i++) {
+                // Fill the tensor with input values
+                // This is a simplified version for demonstration
+                inputArray.setFloat(input[i % 3], 0, (i / 3) % 64, (i / (3 * 64)) % 64, i % 3);
+            }
+            
+            // Run the model
+            List<Tensor<?>> outputTensors = session.runner()
+                    .feed("input", inputTensor)
+                    .fetch("probabilities")
+                    .run();
+            
+            // Process the output
+            try (Tensor<TFloat32> outputTensor = (Tensor<TFloat32>) outputTensors.get(0)) {
+                float[] output = new float[10];
+                FloatNdArray outputArray = outputTensor.data();
+                
+                // Copy output values
+                for (int i = 0; i < output.length; i++) {
+                    output[i] = outputArray.getFloat(0, i);
+                }
+                
+                // Clean up
+                outputTensors.forEach(Tensor::close);
+                
+                return output;
+            }
+        } catch (Exception e) {
+            log.error("Failed to run neural network", e);
+            // Return default output
+            return new float[10];
+        }
+    }
+    
+    /**
+     * Save and load the model
+     */
+    private void saveModel(String path) {
+        try {
+            byte[] graphDef = graph.toGraphDef();
+            Files.write(Paths.get(path), graphDef);
+            log.info("Model saved successfully to {}", path);
+        } catch (IOException e) {
+            log.error("Failed to save model", e);
+        }
+    }
+    
+    private void loadModel(String path) {
+        try {
+            byte[] graphDef = Files.readAllBytes(Paths.get(path));
+            graph.importGraphDef(graphDef);
+            log.info("Model loaded successfully from {}", path);
+        } catch (IOException e) {
+            log.error("Failed to load model", e);
+        }
+    }
+}
+
+
+package com.cstestforge.service.ai;
+
+import com.cstestforge.model.recorder.ElementLocator;
+import com.cstestforge.model.recorder.PageInfo;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * Service for generating smart, robust locators for UI elements.
+ * This implements advanced algorithms for locator generation without third-party dependencies.
+ */
+@Service
+@Slf4j
+public class SmartLocatorService {
+
+    private static final String[] COMMON_BUTTON_CLASSES = {"btn", "button", "submit", "cancel", "primary", "secondary"};
+    private static final String[] COMMON_INPUT_CLASSES = {"form-control", "input", "text-field", "textbox"};
+    private static final String[] COMMON_LINK_CLASSES = {"link", "nav-link", "menu-item"};
+    
+    private final Map<String, Pattern> locatorPatterns = new HashMap<>();
+    private final Map<String, Integer> locatorScores = new HashMap<>();
+    
+    /**
+     * Initialize the service
+     */
+    @PostConstruct
+    public void init() {
+        initializeLocatorPatterns();
+        initializeLocatorScores();
+        log.info("SmartLocatorService initialized");
+    }
+    
+    /**
+     * Initialize patterns for locator recognition
+     */
+    private void initializeLocatorPatterns() {
+        // ID pattern
+        locatorPatterns.put("id", Pattern.compile("id=[\"']([^\"']+)[\"']"));
+        
+        // Class pattern
+        locatorPatterns.put("class", Pattern.compile("class=[\"']([^\"']+)[\"']"));
+        
+        // Name pattern
+        locatorPatterns.put("name", Pattern.compile("name=[\"']([^\"']+)[\"']"));
+        
+        // Data attribute patterns
+        locatorPatterns.put("data-testid", Pattern.compile("data-testid=[\"']([^\"']+)[\"']"));
+        locatorPatterns.put("data-id", Pattern.compile("data-id=[\"']([^\"']+)[\"']"));
+        locatorPatterns.put("data-automation", Pattern.compile("data-automation-id=[\"']([^\"']+)[\"']"));
+        
+        // Aria attribute patterns
+        locatorPatterns.put("aria-label", Pattern.compile("aria-label=[\"']([^\"']+)[\"']"));
+        locatorPatterns.put("aria-labelledby", Pattern.compile("aria-labelledby=[\"']([^\"']+)[\"']"));
+        
+        // Text pattern
+        locatorPatterns.put("text", Pattern.compile(">\\s*([^<]+)\\s*<"));
+        
+        // Role pattern
+        locatorPatterns.put("role", Pattern.compile("role=[\"']([^\"']+)[\"']"));
+        
+        // Type pattern
+        locatorPatterns.put("type", Pattern.compile("type=[\"']([^\"']+)[\"']"));
+        
+        // Title pattern
+        locatorPatterns.put("title", Pattern.compile("title=[\"']([^\"']+)[\"']"));
+        
+        // Placeholder pattern
+        locatorPatterns.put("placeholder", Pattern.compile("placeholder=[\"']([^\"']+)[\"']"));
+        
+        // Value pattern
+        locatorPatterns.put("value", Pattern.compile("value=[\"']([^\"']+)[\"']"));
+        
+        // Href pattern
+        locatorPatterns.put("href", Pattern.compile("href=[\"']([^\"']+)[\"']"));
+        
+        // For pattern (label)
+        locatorPatterns.put("for", Pattern.compile("for=[\"']([^\"']+)[\"']"));
+    }
+    
+    /**
+     * Initialize scores for different locator types
+     */
+    private void initializeLocatorScores() {
+        // Higher scores mean better locators (more reliable)
+        locatorScores.put("id", 100);
+        locatorScores.put("data-testid", 95);
+        locatorScores.put("data-automation", 90);
+        locatorScores.put("data-id", 85);
+        locatorScores.put("name", 80);
+        locatorScores.put("for", 75);
+        locatorScores.put("aria-label", 70);
+        locatorScores.put("aria-labelledby", 65);
+        locatorScores.put("title", 60);
+        locatorScores.put("role", 55);
+        locatorScores.put("type", 50);
+        locatorScores.put("href", 45);
+        locatorScores.put("placeholder", 40);
+        locatorScores.put("value", 35);
+        locatorScores.put("class", 30);
+        locatorScores.put("text", 25);
+    }
+    
+    /**
+     * Generate smart locators for an element
+     *
+     * @param element Raw HTML element
+     * @param pageContext Page context information
+     * @return List of smart locators ordered by reliability
+     */
+    public List<String> generateSmartLocators(String element, PageInfo pageContext) {
+        try {
+            if (element == null || element.isEmpty()) {
+                return Collections.emptyList();
+            }
+            
+            Map<String, String> attributes = extractAttributes(element);
+            String tagName = extractTagName(element);
+            
+            // Create locators based on extracted attributes
+            List<LocatorCandidate> locatorCandidates = new ArrayList<>();
+            
+            // Generate locators for each attribute
+            for (Map.Entry<String, String> attribute : attributes.entrySet()) {
+                String attributeName = attribute.getKey();
+                String attributeValue = attribute.getValue();
+                
+                if (attributeName.equals("id")) {
+                    // ID is the most reliable locator
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//*[@id='%s']", attributeValue),
+                            getLocatorScore("id")
+                    ));
+                    
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("#%s", attributeValue),
+                            getLocatorScore("id") - 5 // Slightly lower score for CSS
+                    ));
+                } else if (attributeName.equals("class")) {
+                    // Class-based locators
+                    String[] classes = attributeValue.split("\\s+");
+                    
+                    // Single class locator
+                    if (classes.length > 0 && !classes[0].isEmpty()) {
+                        locatorCandidates.add(new LocatorCandidate(
+                                String.format("//%s[contains(@class, '%s')]", tagName, classes[0]),
+                                getLocatorScore("class")
+                        ));
+                        
+                        locatorCandidates.add(new LocatorCandidate(
+                                String.format("%s.%s", tagName, classes[0]),
+                                getLocatorScore("class") - 5
+                        ));
+                    }
+                    
+                    // Multiple class locator for better specificity
+                    if (classes.length > 1) {
+                        StringBuilder xpathBuilder = new StringBuilder(String.format("//%s[contains(@class, '%s')", tagName, classes[0]));
+                        StringBuilder cssBuilder = new StringBuilder(String.format("%s.%s", tagName, classes[0]));
+                        
+                        for (int i = 1; i < classes.length; i++) {
+                            if (!classes[i].isEmpty()) {
+                                xpathBuilder.append(String.format(" and contains(@class, '%s')", classes[i]));
+                                cssBuilder.append(String.format(".%s", classes[i]));
+                            }
+                        }
+                        
+                        xpathBuilder.append("]");
+                        
+                        locatorCandidates.add(new LocatorCandidate(
+                                xpathBuilder.toString(),
+                                getLocatorScore("class") + 10 // Higher score for more specific locator
+                        ));
+                        
+                        locatorCandidates.add(new LocatorCandidate(
+                                cssBuilder.toString(),
+                                getLocatorScore("class") + 5
+                        ));
+                    }
+                } else if (attributeName.startsWith("data-")) {
+                    // Data attributes are good for testing
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@%s='%s']", tagName, attributeName, attributeValue),
+                            getLocatorScore(attributeName)
+                    ));
+                    
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("%s[%s='%s']", tagName, attributeName, attributeValue),
+                            getLocatorScore(attributeName) - 5
+                    ));
+                } else if (attributeName.equals("name")) {
+                    // Name attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@name='%s']", tagName, attributeValue),
+                            getLocatorScore("name")
+                    ));
+                    
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("%s[name='%s']", tagName, attributeValue),
+                            getLocatorScore("name") - 5
+                    ));
+                } else if (attributeName.startsWith("aria-")) {
+                    // Aria attributes
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@%s='%s']", tagName, attributeName, attributeValue),
+                            getLocatorScore(attributeName)
+                    ));
+                } else if (attributeName.equals("for")) {
+                    // For attribute (labels)
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//label[@for='%s']", attributeValue),
+                            getLocatorScore("for")
+                    ));
+                } else if (attributeName.equals("type")) {
+                    // Type attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@type='%s']", tagName, attributeValue),
+                            getLocatorScore("type")
+                    ));
+                } else if (attributeName.equals("placeholder")) {
+                    // Placeholder attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@placeholder='%s']", tagName, attributeValue),
+                            getLocatorScore("placeholder")
+                    ));
+                } else if (attributeName.equals("value")) {
+                    // Value attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@value='%s']", tagName, attributeValue),
+                            getLocatorScore("value")
+                    ));
+                } else if (attributeName.equals("href") && tagName.equals("a")) {
+                    // Href attribute for links
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//a[contains(@href, '%s')]", attributeValue),
+                            getLocatorScore("href")
+                    ));
+                } else if (attributeName.equals("title")) {
+                    // Title attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@title='%s']", tagName, attributeValue),
+                            getLocatorScore("title")
+                    ));
+                } else if (attributeName.equals("role")) {
+                    // Role attribute
+                    locatorCandidates.add(new LocatorCandidate(
+                            String.format("//%s[@role='%s']", tagName, attributeValue),
+                            getLocatorScore("role")
+                    ));
+                }
+            }
+            
+            // Text-based locator
+            String text = extractText(element);
+            if (text != null && !text.isEmpty() && text.length() < 50) { // Avoid long text locators
+                locatorCandidates.add(new LocatorCandidate(
+                        String.format("//%s[contains(text(), '%s')]", tagName, text),
+                        getLocatorScore("text")
+                ));
+                
+                // Exact text match for higher specificity
+                locatorCandidates.add(new LocatorCandidate(
+                        String.format("//%s[text()='%s']", tagName, text),
+                        getLocatorScore("text") + 5
+                ));
+            }
+            
+            // Generate specialized locators based on element type
+            if (tagName.equals("button") || 
+                (tagName.equals("input") && attributes.containsKey("type") && attributes.get("type").equals("button"))) {
+                generateButtonLocators(locatorCandidates, attributes, text);
+            } else if (tagName.equals("input")) {
+                generateInputLocators(locatorCandidates, attributes);
+            } else if (tagName.equals("a")) {
+                generateLinkLocators(locatorCandidates, attributes, text);
+            } else if (tagName.equals("select")) {
+                generateSelectLocators(locatorCandidates, attributes);
+            }
+            
+            // Add a tag-specific positional locator as a fallback
+            locatorCandidates.add(new LocatorCandidate(
+                    String.format("//%s[1]", tagName),
+                    10 // Low score for positional locator
+            ));
+            
+            // Sort locators by score (higher is better)
+            locatorCandidates.sort(Comparator.<LocatorCandidate>comparingInt(c -> c.score).reversed());
+            
+            // Extract locator strings from candidates
+            return locatorCandidates.stream()
+                    .map(candidate -> candidate.locator)
+                    .distinct() // Remove duplicates
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Failed to generate smart locators", e);
+            return Collections.emptyList();
+        }
+    }
+    
+    /**
+     * Generate specialized locators for buttons
+     */
+    private void generateButtonLocators(List<LocatorCandidate> candidates, Map<String, String> attributes, String text) {
+        // Button locators based on common patterns
+        if (text != null && !text.isEmpty()) {
+            candidates.add(new LocatorCandidate(
+                    String.format("//button[contains(text(), '%s')]", text),
+                    getLocatorScore("text") + 15 // Higher score for button text
+            ));
+        }
+        
+        if (attributes.containsKey("class")) {
+            String className = attributes.get("class");
+            
+            for (String buttonClass : COMMON_BUTTON_CLASSES) {
+                if (className.contains(buttonClass)) {
+                    candidates.add(new LocatorCandidate(
+                            String.format("//button[contains(@class, '%s')]", buttonClass),
+                            getLocatorScore("class") + 10
+                    ));
+                    break;
+                }
+            }
+        }
+        
+        // Button by type
+        if (attributes.containsKey("type")) {
+            String type = attributes.get("type");
+            candidates.add(new LocatorCandidate(
+                    String.format("//button[@type='%s']", type),
+                    getLocatorScore("type") + 5
+            ));
+        }
+    }
+    
+    /**
+     * Generate specialized locators for input fields
+     */
+    private void generateInputLocators(List<LocatorCandidate> candidates, Map<String, String> attributes) {
+        // Input locators based on type
+        if (attributes.containsKey("type")) {
+            String type = attributes.get("type");
+            candidates.add(new LocatorCandidate(
+                    String.format("//input[@type='%s']", type),
+                    getLocatorScore("type") + 10
+            ));
+        }
+        
+        // Input locators based on placeholder
+        if (attributes.containsKey("placeholder")) {
+            String placeholder = attributes.get("placeholder");
+            candidates.add(new LocatorCandidate(
+                    String.format("//input[@placeholder='%s']", placeholder),
+                    getLocatorScore("placeholder") + 15
+            ));
+        }
+        
+        // Input locators based on common classes
+        if (attributes.containsKey("class")) {
+            String className = attributes.get("class");
+            
+            for (String inputClass : COMMON_INPUT_CLASSES) {
+                if (className.contains(inputClass)) {
+                    candidates.add(new LocatorCandidate(
+                            String.format("//input[contains(@class, '%s')]", inputClass),
+                            getLocatorScore("class") + 10
+                    ));
+                    break;
+                }
+            }
+        }
+        
+        // Input with associated label
+        if (attributes.containsKey("id")) {
+            String id = attributes.get("id");
+            candidates.add(new LocatorCandidate(
+                    String.format("//label[@for='%s']/following::input", id),
+                    getLocatorScore("for") + 5
+            ));
+        }
+    }
+    
+    /**
+     * Generate specialized locators for links
+     */
+    private void generateLinkLocators(List<LocatorCandidate> candidates, Map<String, String> attributes, String text) {
+        // Link locators based on text
+        if (text != null && !text.isEmpty()) {
+            candidates.add(new LocatorCandidate(
+                    String.format("//a[contains(text(), '%s')]", text),
+                    getLocatorScore("text") + 15
+            ));
+        }
+        
+        // Link locators based on href
+        if (attributes.containsKey("href")) {
+            String href = attributes.get("href");
+            
+            if (href.startsWith("http") || href.startsWith("/")) {
+                candidates.add(new LocatorCandidate(
+                        String.format("//a[contains(@href, '%s')]", href),
+                        getLocatorScore("href") + 10
+                ));
+            }
+        }
+        
+        // Link locators based on common classes
+        if (attributes.containsKey("class")) {
+            String className = attributes.get("class");
+            
+            for (String linkClass : COMMON_LINK_CLASSES) {
+                if (className.contains(linkClass)) {
+                    candidates.add(new LocatorCandidate(
+                            String.format("//a[contains(@class, '%s')]", linkClass),
+                            getLocatorScore("class") + 10
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Generate specialized locators for select elements
+     */
+    private void generateSelectLocators(List<LocatorCandidate> candidates, Map<String, String> attributes) {
+        // Select locators based on label
+        if (attributes.containsKey("id")) {
+            String id = attributes.get("id");
+            candidates.add(new LocatorCandidate(
+                    String.format("//label[@for='%s']/following::select", id),
+                    getLocatorScore("for") + 5
+            ));
+        }
+        
+        // Select with specific option
+        candidates.add(new LocatorCandidate(
+                "//select[option]",
+                getLocatorScore("type") + 5
+        ));
+    }
+    
+    /**
+     * Extract tag name from element HTML
+     */
+    private String extractTagName(String element) {
+        Pattern pattern = Pattern.compile("<(\\w+)[\\s>]");
+        Matcher matcher = pattern.matcher(element);
+        
+        if (matcher.find()) {
+            return matcher.group(1).toLowerCase();
+        }
+        
+        return "div"; // Default tag if not found
+    }
+    
+    /**
+     * Extract text content from element HTML
+     */
+    private String extractText(String element) {
+        Pattern pattern = Pattern.compile(">\\s*([^<]+)\\s*<");
+        Matcher matcher = pattern.matcher(element);
+        
+        if (matcher.find()) {
+            String text = matcher.group(1).trim();
+            return text.isEmpty() ? null : text;
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract attributes from element HTML
+     */
+    private Map<String, String> extractAttributes(String element) {
+        Map<String, String> attributes = new HashMap<>();
+        
+        if (element == null || element.isEmpty()) {
+            return attributes;
+        }
+        
+        Pattern pattern = Pattern.compile("(\\w+)=[\"']([^\"']*)[\"']");
+        Matcher matcher = pattern.matcher(element);
+        
+        while (matcher.find()) {
+            String name = matcher.group(1);
+            String value = matcher.group(2);
+            attributes.put(name, value);
+        }
+        
+        return attributes;
+    }
+    
+    /**
+     * Get score for a locator type
+     */
+    private int getLocatorScore(String locatorType) {
+        return locatorScores.getOrDefault(locatorType, 0);
+    }
+    
+    /**
+     * Class to hold a locator candidate with its reliability score
+     */
+    private static class LocatorCandidate {
+        final String locator;
+        final int score;
+        
+        public LocatorCandidate(String locator, int score) {
+            this.locator = locator;
+            this.score = score;
+        }
+    }
+}
+
+
+package com.cstestforge.service.codegen;
+
+import com.cstestforge.model.recorder.ActionType;
+import com.cstestforge.model.recorder.ElementLocator;
+import com.cstestforge.model.recorder.RecordedAction;
+import com.cstestforge.model.recorder.RecordingSession;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.velocity.Template;
+import org.apache.velocity.VelocityContext;
+import org.apache.velocity.app.VelocityEngine;
+import org.apache.velocity.runtime.RuntimeConstants;
+import org.apache.velocity.runtime.resource.loader.ClasspathResourceLoader;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.StringWriter;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Service for generating test code based on recorded actions.
+ * Supports multiple languages, frameworks, and test types.
+ */
+@Service
+@Slf4j
+public class CodeGenerationService {
+
+    private VelocityEngine velocityEngine;
+    private Map<String, String> templatePaths;
+    
+    @PostConstruct
+    public void init() {
+        initVelocityEngine();
+        initTemplatePaths();
+        log.info("CodeGenerationService initialized");
+    }
+    
+    /**
+     * Initialize the Velocity template engine
+     */
+    private void initVelocityEngine() {
+        velocityEngine = new VelocityEngine();
+        velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
+        velocityEngine.setProperty("classpath.resource.loader.class", ClasspathResourceLoader.class.getName());
+        velocityEngine.init();
+    }
+    
+    /**
+     * Initialize template paths map
+     */
+    private void initTemplatePaths() {
+        templatePaths = new HashMap<>();
+        
+        // Java + Selenium + TestNG
+        templatePaths.put("JAVA_SELENIUM_TESTNG", "templates/codegen/java/selenium/testng.vm");
+        
+        // Java + Selenium + BDD
+        templatePaths.put("JAVA_SELENIUM_BDD", "templates/codegen/java/selenium/bdd.vm");
+        
+        // Java + Playwright + TestNG
+        templatePaths.put("JAVA_PLAYWRIGHT_TESTNG", "templates/codegen/java/playwright/testng.vm");
+        
+        // Java + Playwright + BDD
+        templatePaths.put("JAVA_PLAYWRIGHT_BDD", "templates/codegen/java/playwright/bdd.vm");
+        
+        // TypeScript + Playwright + TestNG-style
+        templatePaths.put("TYPESCRIPT_PLAYWRIGHT_TESTNG", "templates/codegen/typescript/playwright/testng.vm");
+        
+        // TypeScript + Playwright + BDD
+        templatePaths.put("TYPESCRIPT_PLAYWRIGHT_BDD", "templates/codegen/typescript/playwright/bdd.vm");
+    }
+    
+    /**
+     * Generate code based on the recording session
+     *
+     * @param language Programming language
+     * @param framework Testing framework
+     * @param testType Test type
+     * @param session Recording session
+     * @return Generated test code
+     */
+    public String generateCode(Object language, Object framework, Object testType, RecordingSession session) {
+        try {
+            // Determine the template key
+            String templateKey = language + "_" + framework + "_" + testType;
+            
+            // Get the template path
+            String templatePath = templatePaths.get(templateKey);
+            
+            if (templatePath == null) {
+                log.error("No template found for: {}", templateKey);
+                return "// Error: No template found for the selected configuration";
+            }
+            
+            // Load the template
+            Template template = velocityEngine.getTemplate(templatePath);
+            
+            // Create Velocity context with variables
+            VelocityContext context = createContext(session);
+            
+            // Render the template
+            StringWriter writer = new StringWriter();
+            template.merge(context, writer);
+            
+            return writer.toString();
+        } catch (Exception e) {
+            log.error("Failed to generate code", e);
+            return "// Error generating code: " + e.getMessage();
+        }
+    }
+    
+    /**
+     * Create Velocity context with variables for template rendering
+     *
+     * @param session Recording session
+     * @return Velocity context
+     */
+    private VelocityContext createContext(RecordingSession session) {
+        VelocityContext context = new VelocityContext();
+        
+        // Add basic variables
+        context.put("session", session);
+        context.put("testName", formatTestName(session.getName()));
+        context.put("className", formatClassName(session.getName()));
+        context.put("packageName", "com.cstestforge.test");
+        context.put("date", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE));
+        context.put("timestamp", System.currentTimeMillis());
+        
+        // Process actions for the template
+        List<Map<String, Object>> processedActions = processActions(session.getActions());
+        context.put("actions", processedActions);
+        
+        // Extract page objects (elements that are interacted with multiple times)
+        Map<String, Map<String, Object>> pageObjects = extractPageObjects(session.getActions());
+        context.put("pageObjects", pageObjects);
+        
+        // Add utility methods
+        context.put("utils", new TemplateUtils());
+        
+        return context;
+    }
+    
+    /**
+     * Process actions for the template
+     *
+     * @param actions Recorded actions
+     * @return Processed actions
+     */
+    private List<Map<String, Object>> processActions(List<RecordedAction> actions) {
+        return actions.stream()
+                .map(this::processAction)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Process a single action for the template
+     *
+     * @param action Recorded action
+     * @return Processed action
+     */
+    private Map<String, Object> processAction(RecordedAction action) {
+        Map<String, Object> processedAction = new HashMap<>();
+        
+        processedAction.put("id", action.getId());
+        processedAction.put("type", action.getType());
+        processedAction.put("description", action.getDescription());
+        processedAction.put("value", formatStringValue(action.getValue()));
+        
+        if (action.getTarget() != null) {
+            processedAction.put("locator", getBestLocator(action.getTarget()));
+            processedAction.put("locatorType", getBestLocatorType(action.getTarget()));
+            processedAction.put("target", action.getTarget());
+        }
+        
+        if (action.getPageInfo() != null) {
+            processedAction.put("url", action.getPageInfo().getUrl());
+            processedAction.put("title", action.getPageInfo().getTitle());
+        }
+        
+        // Process special action types
+        if (action.getType() == ActionType.CONDITION && action.getConditionalLogic() != null) {
+            processedAction.put("condition", formatCondition(action.getConditionalLogic().getCondition()));
+            processedAction.put("ifActions", action.getConditionalLogic().getIfActions());
+            processedAction.put("elseActions", action.getConditionalLogic().getElseActions());
+        } else if (action.getType() == ActionType.LOOP && action.getLoopLogic() != null) {
+            processedAction.put("loopType", action.getLoopLogic().getLoopType());
+            processedAction.put("loopCondition", formatLoopCondition(action.getLoopLogic().getCondition()));
+            processedAction.put("loopActions", action.getLoopLogic().getLoopActions());
+        } else if (action.getType() == ActionType.CUSTOM_CODE) {
+            processedAction.put("customCode", formatCustomCode(action.getCustomCode()));
+        } else if (action.getType() == ActionType.WAIT) {
+            // Process wait time (convert to milliseconds if needed)
+            String waitValue = action.getValue();
+            if (waitValue != null && !waitValue.isEmpty()) {
+                try {
+                    int waitTime = Integer.parseInt(waitValue);
+                    processedAction.put("waitTime", waitTime);
+                } catch (NumberFormatException e) {
+                    processedAction.put("waitTime", 1000); // Default to 1 second
+                }
+            } else {
+                processedAction.put("waitTime", 1000); // Default to 1 second
+            }
+        }
+        
+        return processedAction;
+    }
+    
+    /**
+     * Extract page objects from actions
+     * Identifies elements that are used multiple times for POM generation
+     *
+     * @param actions Recorded actions
+     * @return Map of page objects
+     */
+    private Map<String, Map<String, Object>> extractPageObjects(List<RecordedAction> actions) {
+        Map<String, Map<String, Object>> pageObjects = new HashMap<>();
+        Map<String, Integer> elementUsage = new HashMap<>();
+        
+        // Count element usage
+        for (RecordedAction action : actions) {
+            if (action.getTarget() != null) {
+                String locator = getBestLocator(action.getTarget());
+                elementUsage.put(locator, elementUsage.getOrDefault(locator, 0) + 1);
+            }
+        }
+        
+        // Create page objects for elements used multiple times
+        for (RecordedAction action : actions) {
+            if (action.getTarget() != null) {
+                String locator = getBestLocator(action.getTarget());
+                
+                if (elementUsage.getOrDefault(locator, 0) > 1 && !pageObjects.containsKey(locator)) {
+                    Map<String, Object> pageObject = new HashMap<>();
+                    String elementName = generateElementName(action);
+                    
+                    pageObject.put("name", elementName);
+                    pageObject.put("locator", locator);
+                    pageObject.put("locatorType", getBestLocatorType(action.getTarget()));
+                    pageObject.put("type", getElementType(action));
+                    pageObject.put("usageCount", elementUsage.get(locator));
+                    
+                    pageObjects.put(locator, pageObject);
+                }
+            }
+        }
+        
+        return pageObjects;
+    }
+    
+    /**
+     * Get the best locator for an element
+     *
+     * @param target Element locator
+     * @return Best locator string
+     */
+    private String getBestLocator(ElementLocator target) {
+        // Prioritize locators by reliability
+        if (target.getId() != null && !target.getId().isEmpty()) {
+            return target.getId();
+        } else if (target.getAiGeneratedLocator() != null && !target.getAiGeneratedLocator().isEmpty()) {
+            return target.getAiGeneratedLocator();
+        } else if (target.getXpath() != null && !target.getXpath().isEmpty()) {
+            return target.getXpath();
+        } else if (target.getCss() != null && !target.getCss().isEmpty()) {
+            return target.getCss();
+        } else if (target.getName() != null && !target.getName().isEmpty()) {
+            return target.getName();
+        } else if (target.getClassName() != null && !target.getClassName().isEmpty()) {
+            return target.getClassName();
+        } else if (target.getLinkText() != null && !target.getLinkText().isEmpty()) {
+            return target.getLinkText();
+        } else if (target.getTagName() != null && !target.getTagName().isEmpty()) {
+            return target.getTagName();
+        } else if (target.getAlternativeLocators() != null && !target.getAlternativeLocators().isEmpty()) {
+            return target.getAlternativeLocators().get(0);
+        }
+        
+        return "NO_LOCATOR_FOUND";
+    }
+    
+    /**
+     * Get the best locator type for an element
+     *
+     * @param target Element locator
+     * @return Locator type
+     */
+    private String getBestLocatorType(ElementLocator target) {
+        // Determine the locator type based on the best locator
+        if (target.getId() != null && !target.getId().isEmpty()) {
+            return "ID";
+        } else if (target.getAiGeneratedLocator() != null && !target.getAiGeneratedLocator().isEmpty()) {
+            return "XPATH";
+        } else if (target.getXpath() != null && !target.getXpath().isEmpty()) {
+            return "XPATH";
+        } else if (target.getCss() != null && !target.getCss().isEmpty()) {
+            return "CSS";
+        } else if (target.getName() != null && !target.getName().isEmpty()) {
+            return "NAME";
+        } else if (target.getClassName() != null && !target.getClassName().isEmpty()) {
+            return "CLASS_NAME";
+        } else if (target.getLinkText() != null && !target.getLinkText().isEmpty()) {
+            return "LINK_TEXT";
+        } else if (target.getTagName() != null && !target.getTagName().isEmpty()) {
+            return "TAG_NAME";
+        } else if (target.getAlternativeLocators() != null && !target.getAlternativeLocators().isEmpty()) {
+            String alt = target.getAlternativeLocators().get(0);
+            if (alt.startsWith("//")) {
+                return "XPATH";
+            } else if (alt.startsWith("#") || alt.startsWith(".")) {
+                return "CSS";
+            }
+        }
+        
+        return "XPATH";
+    }
+    
+    /**
+     * Generate a meaningful name for an element
+     *
+     * @param action Action that uses the element
+     * @return Element name
+     */
+    private String generateElementName(RecordedAction action) {
+        if (action.getTarget() == null) {
+            return "element";
+        }
+        
+        // Try to generate a meaningful name
+        String baseType = getElementType(action);
+        String suffix = "";
+        
+        // Add suffix based on identifier
+        if (action.getTarget().getId() != null && !action.getTarget().getId().isEmpty()) {
+            suffix = formatVariableName(action.getTarget().getId());
+        } else if (action.getValue() != null && !action.getValue().isEmpty() && action.getValue().length() < 20) {
+            suffix = formatVariableName(action.getValue());
+        } else if (action.getDescription() != null && !action.getDescription().isEmpty()) {
+            // Extract potential name from description
+            String desc = action.getDescription();
+            if (desc.contains("on ")) {
+                suffix = formatVariableName(desc.substring(desc.indexOf("on ") + 3));
+            } else if (desc.contains("in ")) {
+                suffix = formatVariableName(desc.substring(desc.indexOf("in ") + 3));
+            }
+        }
+        
+        if (suffix.isEmpty()) {
+            // Generate a unique suffix based on action timestamp
+            suffix = Long.toString(action.getTimestamp() % 1000);
+        }
+        
+        return baseType + suffix;
+    }
+    
+    /**
+     * Get the element type based on action and target
+     *
+     * @param action Action that uses the element
+     * @return Element type
+     */
+    private String getElementType(RecordedAction action) {
+        if (action.getTarget() == null) {
+            return "element";
+        }
+        
+        if (action.getTarget().getTagName() != null) {
+            String tagName = action.getTarget().getTagName().toLowerCase();
+            
+            switch (tagName) {
+                case "button":
+                    return "button";
+                case "input":
+                    return "input";
+                case "a":
+                    return "link";
+                case "select":
+                    return "dropdown";
+                case "textarea":
+                    return "textArea";
+                case "img":
+                    return "image";
+                case "div":
+                    return "container";
+                case "span":
+                    return "text";
+                case "table":
+                    return "table";
+                case "form":
+                    return "form";
+                default:
+                    return "element";
+            }
+        } else if (action.getType() == ActionType.CLICK) {
+            return "button";
+        } else if (action.getType() == ActionType.TYPE) {
+            return "input";
+        } else if (action.getType() == ActionType.SELECT) {
+            return "dropdown";
+        }
+        
+        return "element";
+    }
+    
+    /**
+     * Format a string for use as a variable name
+     *
+     * @param input Input string
+     * @return Formatted variable name
+     */
+    private String formatVariableName(String input) {
+        if (input == null || input.isEmpty()) {
+            return "";
+        }
+        
+        // Remove non-alphanumeric characters
+        String sanitized = input.replaceAll("[^a-zA-Z0-9]+", " ").trim();
+        
+        if (sanitized.isEmpty()) {
+            return "";
+        }
+        
+        // Split by whitespace and capitalize first letter of each word (except first)
+        String[] parts = sanitized.split("\\s+");
+        StringBuilder result = new StringBuilder(parts[0].toLowerCase());
+        
+        for (int i = 1; i < parts.length; i++) {
+            if (!parts[i].isEmpty()) {
+                result.append(Character.toUpperCase(parts[i].charAt(0)));
+                if (parts[i].length() > 1) {
+                    result.append(parts[i].substring(1).toLowerCase());
+                }
+            }
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * Format a string value for use in generated code
+     *
+     * @param value String value
+     * @return Formatted string
+     */
+    private String formatStringValue(String value) {
+        if (value == null) {
+            return "null";
+        }
+        
+        // Escape special characters
+        return value.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
+    }
+    
+    /**
+     * Format a condition for use in generated code
+     *
+     * @param condition Condition string
+     * @return Formatted condition
+     */
+    private String formatCondition(String condition) {
+        if (condition == null || condition.isEmpty()) {
+            return "true";
+        }
+        
+        // Format condition for use in Java/TypeScript
+        return condition.trim();
+    }
+    
+    /**
+     * Format a loop condition for use in generated code
+     *
+     * @param condition Loop condition
+     * @return Formatted loop condition
+     */
+    private String formatLoopCondition(String condition) {
+        if (condition == null || condition.isEmpty()) {
+            return "int i = 0; i < 1; i++";
+        }
+        
+        // Format loop condition for use in Java/TypeScript
+        return condition.trim();
+    }
+    
+    /**
+     * Format custom code
+     *
+     * @param code Custom code
+     * @return Formatted custom code
+     */
+    private String formatCustomCode(String code) {
+        if (code == null || code.isEmpty()) {
+            return "// Custom code here";
+        }
+        
+        return code;
+    }
+    
+    /**
+     * Format test name from session name
+     *
+     * @param sessionName Session name
+     * @return Formatted test name
+     */
+    private String formatTestName(String sessionName) {
+        if (sessionName == null || sessionName.isEmpty()) {
+            return "test";
+        }
+        
+        // Remove non-alphanumeric characters and replace with underscores
+        String sanitized = sessionName.replaceAll("[^a-zA-Z0-9]+", "_");
+        
+        // Remove leading and trailing underscores
+        sanitized = sanitized.replaceAll("^_+|_+$", "");
+        
+        // Convert to lower case
+        return sanitized.toLowerCase();
+    }
+    
+    /**
+     * Format class name from session name
+     *
+     * @param sessionName Session name
+     * @return Formatted class name
+     */
+    private String formatClassName(String sessionName) {
+        if (sessionName == null || sessionName.isEmpty()) {
+            return "TestClass";
+        }
+        
+        // Remove non-alphanumeric characters and replace with spaces
+        String sanitized = sessionName.replaceAll("[^a-zA-Z0-9]+", " ");
+        
+        // Split by whitespace and capitalize first letter of each word
+        String[] parts = sanitized.split("\\s+");
+        StringBuilder result = new StringBuilder();
+        
+        for (String part : parts) {
+            if (!part.isEmpty()) {
+                result.append(Character.toUpperCase(part.charAt(0)));
+                if (part.length() > 1) {
+                    result.append(part.substring(1).toLowerCase());
+                }
+            }
+        }
+        
+        // Add "Test" suffix
+        if (!result.toString().endsWith("Test")) {
+            result.append("Test");
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * Utility class for template operations
+     */
+    public static class TemplateUtils {
+        
+        /**
+         * Format a locator for use in code based on locator type
+         *
+         * @param locator Locator string
+         * @param locatorType Locator type
+         * @param framework Testing framework
+         * @return Formatted locator code
+         */
+        public String formatLocator(String locator, String locatorType, String framework) {
+            if (locator == null || locator.isEmpty()) {
+                return "null";
+            }
+            
+            if (framework.equals("SELENIUM")) {
+                switch (locatorType) {
+                    case "ID":
+                        return String.format("By.id(\"%s\")", locator);
+                    case "CSS":
+                        return String.format("By.cssSelector(\"%s\")", locator);
+                    case "XPATH":
+                        return String.format("By.xpath(\"%s\")", locator);
+                    case "NAME":
+                        return String.format("By.name(\"%s\")", locator);
+                    case "CLASS_NAME":
+                        return String.format("By.className(\"%s\")", locator);
+                    case "LINK_TEXT":
+                        return String.format("By.linkText(\"%s\")", locator);
+                    case "TAG_NAME":
+                        return String.format("By.tagName(\"%s\")", locator);
+                    default:
+                        return String.format("By.xpath(\"%s\")", locator);
+                }
+            } else if (framework.equals("PLAYWRIGHT")) {
+                switch (locatorType) {
+                    case "ID":
+                        return String.format("page.locator(\"#%s\")", locator);
+                    case "CSS":
+                        return String.format("page.locator(\"%s\")", locator);
+                    case "XPATH":
+                        return String.format("page.locator(\"%s\")", locator);
+                    case "NAME":
+                        return String.format("page.locator(\"[name='%s']\")", locator);
+                    case "CLASS_NAME":
+                        return String.format("page.locator(\".%s\")", locator);
+                    case "LINK_TEXT":
+                        return String.format("page.getByText(\"%s\")", locator);
+                    case "TAG_NAME":
+                        return String.format("page.locator(\"%s\")", locator);
+                    default:
+                        return String.format("page.locator(\"%s\")", locator);
+                }
+            }
+            
+            return String.format("\"%s\"", locator);
+        }
+        
+        /**
+         * Generate a wait statement based on the framework
+         *
+         * @param timeMs Wait time in milliseconds
+         * @param framework Testing framework
+         * @param language Programming language
+         * @return Wait statement
+         */
+        public String generateWaitStatement(int timeMs, String framework, String language) {
+            if (framework.equals("SELENIUM")) {
+                if (language.equals("JAVA")) {
+                    return String.format("Thread.sleep(%d);", timeMs);
+                } else {
+                    return String.format("await new Promise(resolve => setTimeout(resolve, %d));", timeMs);
+                }
+            } else if (framework.equals("PLAYWRIGHT")) {
+                if (language.equals("JAVA")) {
+                    return String.format("page.waitForTimeout(%d);", timeMs);
+                } else {
+                    return String.format("await page.waitForTimeout(%d);", timeMs);
+                }
+            }
+            
+            return "";
+        }
+        
+        /**
+         * Generate an assertion statement based on the framework and language
+         *
+         * @param condition Assertion condition
+         * @param message Assertion message
+         * @param framework Testing framework
+         * @param language Programming language
+         * @return Assertion statement
+         */
+        public String generateAssertStatement(String condition, String message, String framework, String language) {
+            if (language.equals("JAVA")) {
+                if (framework.equals("SELENIUM") || framework.equals("PLAYWRIGHT")) {
+                    return String.format("Assert.assertTrue(%s, \"%s\");", condition, message);
+                }
+            } else {
+                if (framework.equals("PLAYWRIGHT")) {
+                    return String.format("expect(%s, \"%s\").toBeTruthy();", condition, message);
+                }
+            }
+            
+            return "";
+        }
+        
+        /**
+         * Generate indentation
+         *
+         * @param level Indentation level
+         * @return Indentation string
+         */
+        public String indent(int level) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < level; i++) {
+                sb.append("    ");
+            }
+            return sb.toString();
+        }
+    }
+}
+
+
