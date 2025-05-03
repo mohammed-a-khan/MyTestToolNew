@@ -1,0 +1,1631 @@
+templates/codegen/java/selenium/testng.vm:
+----------------------------------------------
+
+package ${packageName};
+
+import org.testng.annotations.Test;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.AfterMethod;
+import org.testng.Assert;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.By;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.Select;
+import org.openqa.selenium.JavascriptExecutor;
+import java.time.Duration;
+import java.util.List;
+import java.io.File;
+
+import com.cstestforge.framework.core.CSBaseTest;
+import com.cstestforge.framework.core.CSBasePage;
+import com.cstestforge.framework.core.CSTestStep;
+import com.cstestforge.framework.utils.CSTestDataProvider;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.annotations.CSFindBy;
+import com.cstestforge.framework.reporting.CSReporter;
+
+/**
+ * Generated Test: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+public class ${className} extends CSBaseTest {
+    
+    private WebDriver driver;
+    private WebDriverWait wait;
+    private Actions actions;
+    
+    // Page Objects
+    #foreach($page in $pageObjects.values())
+    private ${page.className} ${page.instanceName};
+    #end
+    
+    @BeforeMethod
+    public void setUp() {
+        // Initialize the WebDriver and navigate to the application URL
+        driver = initializeDriver("${browserType}");
+        driver.manage().window().maximize();
+        
+        // Initialize wait and actions
+        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        actions = new Actions(driver);
+        
+        // Navigate to the application
+        driver.get("${baseUrl}");
+        CSReporter.logInfo("Navigated to ${baseUrl}");
+        
+        // Initialize Page Objects
+        #foreach($page in $pageObjects.values())
+        ${page.instanceName} = new ${page.className}(driver);
+        #end
+    }
+    
+    @Test
+    public void ${testMethodName}() {
+        // Start recording test execution
+        CSReporter.startTest("${testName}");
+        
+        try {
+#foreach($action in $actions)
+#set($indent = $utils.indent(3))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}driver.get("${action.url}");
+${indent}CSReporter.logInfo("Navigated to: ${action.url}");
+#elseif($action.type == "CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.click();
+${indent}CSReporter.logInfo("Clicked on element: ${action.target}");
+#elseif($action.type == "TYPE" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.clear();
+${indent}element${action.id}.sendKeys("${action.value}");
+${indent}CSReporter.logInfo("Typed '${action.value}' into element: ${action.target}");
+#elseif($action.type == "SELECT" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}new Select(element${action.id}).selectByVisibleText("${action.value}");
+${indent}CSReporter.logInfo("Selected '${action.value}' from dropdown: ${action.target}");
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "SELENIUM", "JAVA")}
+${indent}CSReporter.logInfo("Waited for ${action.waitTime} seconds");
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}${utils.generateAssertStatement("element" + $action.id + ".isDisplayed()", "Element should be visible", "SELENIUM", "JAVA")}
+${indent}CSReporter.logInfo("Verified element is visible: ${action.target}");
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}String actualText = element${action.id}.getText();
+${indent}Assert.assertEquals(actualText, "${action.expectedText}", "Text verification failed for element: ${action.target}");
+${indent}CSReporter.logInfo("Verified text '${action.expectedText}' in element: ${action.target}");
+#elseif($action.type == "HOVER" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.moveToElement(element${action.id}).perform();
+${indent}CSReporter.logInfo("Hovered over element: ${action.target}");
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}WebElement targetElement = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "SELENIUM")}));
+${indent}actions.dragAndDrop(element${action.id}, targetElement).perform();
+${indent}CSReporter.logInfo("Dragged element ${action.target} to ${action.targetDescription}");
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.contextClick(element${action.id}).perform();
+${indent}CSReporter.logInfo("Right-clicked on element: ${action.target}");
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.doubleClick(element${action.id}).perform();
+${indent}CSReporter.logInfo("Double-clicked on element: ${action.target}");
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.presenceOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", element${action.id});
+${indent}CSReporter.logInfo("Scrolled to element: ${action.target}");
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+${indent}    CSReporter.logInfo("Condition evaluated to true, executing conditional block");
+#foreach($ifActionId in $action.ifActions)
+${indent}    // Implement if action ${ifActionId}
+${indent}    ${utils.renderConditionalAction($ifActionId, $actions, 4)}
+#end
+${indent}} else {
+${indent}    CSReporter.logInfo("Condition evaluated to false, executing else block");
+#foreach($elseActionId in $action.elseActions)
+${indent}    // Implement else action ${elseActionId}
+${indent}    ${utils.renderConditionalAction($elseActionId, $actions, 4)}
+#end
+${indent}}
+${indent}CSReporter.logInfo("Completed conditional block execution");
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+${indent}    CSReporter.logInfo("Starting loop iteration");
+#foreach($loopActionId in $action.loopActions)
+${indent}    // Implement loop action ${loopActionId}
+${indent}    ${utils.renderConditionalAction($loopActionId, $actions, 4)}
+#end
+${indent}}
+${indent}CSReporter.logInfo("Completed all loop iterations");
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+${indent}CSReporter.logInfo("Executed custom code");
+#elseif($action.type == "PAGE_REFRESH")
+${indent}driver.navigate().refresh();
+${indent}CSReporter.logInfo("Refreshed the page");
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Switch to a new tab
+${indent}String originalHandle = driver.getWindowHandle();
+${indent}for (String handle : driver.getWindowHandles()) {
+${indent}    if (!handle.equals(originalHandle)) {
+${indent}        driver.switchTo().window(handle);
+${indent}        CSReporter.logInfo("Switched to new tab: " + driver.getTitle());
+${indent}        break;
+${indent}    }
+${indent}}
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}File screenshotFile = ((org.openqa.selenium.TakesScreenshot) driver).getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+${indent}String screenshotName = "screenshot_" + System.currentTimeMillis() + ".png";
+${indent}try {
+${indent}    org.apache.commons.io.FileUtils.copyFile(screenshotFile, new File(screenshotName));
+${indent}    CSReporter.logInfo("Screenshot captured: " + screenshotName);
+${indent}} catch (Exception e) {
+${indent}    CSReporter.logError("Failed to capture screenshot: " + e.getMessage());
+${indent}}
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.sendKeys("${action.value}"); // Path to file
+${indent}CSReporter.logInfo("Uploaded file '${action.value}' to element: ${action.target}");
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}driver.switchTo().frame(element${action.id});
+${indent}CSReporter.logInfo("Switched to frame: ${action.target}");
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+${indent}driver.switchTo().defaultContent();
+${indent}CSReporter.logInfo("Switched back to default content");
+#elseif($action.type == "CHECK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}if (!element${action.id}.isSelected()) {
+${indent}    element${action.id}.click();
+${indent}}
+${indent}CSReporter.logInfo("Checked checkbox: ${action.target}");
+#elseif($action.type == "UNCHECK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}if (element${action.id}.isSelected()) {
+${indent}    element${action.id}.click();
+${indent}}
+${indent}CSReporter.logInfo("Unchecked checkbox: ${action.target}");
+#else
+${indent}// Unsupported action type: ${action.type}
+${indent}CSReporter.logWarning("Unsupported action type: ${action.type}");
+#end
+
+#end
+            CSReporter.logTestResult(true, "Test completed successfully");
+        } catch (Exception e) {
+            CSReporter.logError("Test failed: " + e.getMessage());
+            takeScreenshot("failure_" + System.currentTimeMillis());
+            Assert.fail("Test failed: " + e.getMessage());
+        }
+    }
+    
+    @AfterMethod
+    public void tearDown() {
+        if (driver != null) {
+            driver.quit();
+            CSReporter.logInfo("WebDriver closed");
+        }
+        CSReporter.endTest();
+    }
+    
+    /**
+     * Takes a screenshot with the given name
+     */
+    private void takeScreenshot(String name) {
+        try {
+            File screenshotFile = ((org.openqa.selenium.TakesScreenshot) driver).getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+            org.apache.commons.io.FileUtils.copyFile(screenshotFile, new File("screenshots/" + name + ".png"));
+        } catch (Exception e) {
+            CSReporter.logError("Failed to capture screenshot: " + e.getMessage());
+        }
+    }
+    
+#foreach($page in $pageObjects.values())
+    /**
+     * Page Object: ${page.name}
+     */
+    public static class ${page.className} extends CSBasePage {
+        
+        #foreach($element in $page.elements)
+        @CSFindBy(${element.locatorType.toLowerCase()} = "${element.locator}")
+        private CSElement ${element.name};
+        
+        #end
+        
+        public ${page.className}(WebDriver driver) {
+            super(driver);
+        }
+        
+        #foreach($element in $page.elements)
+        public CSElement get${utils.capitalizeFirstLetter($element.name)}() {
+            return ${element.name};
+        }
+        
+        #end
+    }
+#end
+}
+
+
+templates/codegen/java/selenium/bdd.vm
+--------------------------------------------
+
+package ${packageName};
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.And;
+import io.cucumber.java.After;
+import io.cucumber.java.Before;
+import io.cucumber.java.Scenario;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.By;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.Select;
+import org.openqa.selenium.JavascriptExecutor;
+import org.testng.Assert;
+import java.time.Duration;
+import java.util.List;
+import java.io.File;
+
+import com.cstestforge.framework.core.CSBaseTest;
+import com.cstestforge.framework.core.CSBasePage;
+import com.cstestforge.framework.core.CSTestStep;
+import com.cstestforge.framework.utils.CSTestDataProvider;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.annotations.CSFindBy;
+import com.cstestforge.framework.reporting.CSReporter;
+
+/**
+ * Generated Steps: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+public class ${className} extends CSBaseTest {
+    
+    private WebDriver driver;
+    private WebDriverWait wait;
+    private Actions actions;
+    private Scenario scenario;
+    
+    // Page Objects
+    #foreach($page in $pageObjects.values())
+    private ${page.className} ${page.instanceName};
+    #end
+    
+    @Before
+    public void setUp(Scenario scenario) {
+        this.scenario = scenario;
+        CSReporter.startTest(scenario.getName());
+        
+        // Initialize the WebDriver
+        driver = initializeDriver("${browserType}");
+        driver.manage().window().maximize();
+        
+        // Initialize wait and actions
+        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        actions = new Actions(driver);
+        
+        // Initialize Page Objects
+        #foreach($page in $pageObjects.values())
+        ${page.instanceName} = new ${page.className}(driver);
+        #end
+        
+        CSReporter.logInfo("Test setup completed");
+    }
+    
+#foreach($action in $actions)
+#if($action.type == "NAVIGATE")
+    @Given("I navigate to ${action.url}")
+    public void navigateTo${action.id}() {
+        driver.get("${action.url}");
+        CSReporter.logInfo("Navigated to: ${action.url}");
+    }
+#elseif($action.type == "CLICK" && $action.target)
+    @When("I click on ${action.target}")
+    public void clickOn${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        element.click();
+        CSReporter.logInfo("Clicked on element: ${action.target}");
+    }
+#elseif($action.type == "TYPE" && $action.target)
+    @When("I type \"${action.value}\" into ${action.target}")
+    public void typeInto${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        element.clear();
+        element.sendKeys("${action.value}");
+        CSReporter.logInfo("Typed '${action.value}' into element: ${action.target}");
+    }
+#elseif($action.type == "TYPE" && $action.target)
+    @When("I type {string} into ${action.target}")
+    public void typeInto${action.id}(String text) {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        element.clear();
+        element.sendKeys(text);
+        CSReporter.logInfo("Typed '" + text + "' into element: ${action.target}");
+    }
+#elseif($action.type == "SELECT" && $action.target)
+    @When("I select \"${action.value}\" from ${action.target}")
+    public void selectFrom${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        new Select(element).selectByVisibleText("${action.value}");
+        CSReporter.logInfo("Selected '${action.value}' from dropdown: ${action.target}");
+    }
+#elseif($action.type == "SELECT" && $action.target)
+    @When("I select {string} from ${action.target}")
+    public void selectFrom${action.id}(String option) {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        new Select(element).selectByVisibleText(option);
+        CSReporter.logInfo("Selected '" + option + "' from dropdown: ${action.target}");
+    }
+#elseif($action.type == "WAIT")
+    @When("I wait for ${action.waitTime} seconds")
+    public void waitFor${action.id}() {
+        ${utils.generateWaitStatement($action.waitTime, "SELENIUM", "JAVA")}
+        CSReporter.logInfo("Waited for ${action.waitTime} seconds");
+    }
+#elseif($action.type == "ASSERT" && $action.target)
+    @Then("${action.target} should be visible")
+    public void verify${action.id}IsVisible() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        ${utils.generateAssertStatement("element.isDisplayed()", "Element should be visible", "SELENIUM", "JAVA")}
+        CSReporter.logInfo("Verified element is visible: ${action.target}");
+    }
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+    @Then("${action.target} should have text \"${action.expectedText}\"")
+    public void verify${action.id}Text() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        String actualText = element.getText();
+        Assert.assertEquals(actualText, "${action.expectedText}", "Text verification failed for element: ${action.target}");
+        CSReporter.logInfo("Verified text '${action.expectedText}' in element: ${action.target}");
+    }
+#elseif($action.type == "HOVER" && $action.target)
+    @When("I hover over ${action.target}")
+    public void hoverOver${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        actions.moveToElement(element).perform();
+        CSReporter.logInfo("Hovered over element: ${action.target}");
+    }
+#elseif($action.type == "DRAG_DROP" && $action.target)
+    @When("I drag ${action.target} and drop it on ${action.targetDescription}")
+    public void dragAndDrop${action.id}() {
+        WebElement sourceElement = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        WebElement targetElement = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "SELENIUM")}));
+        actions.dragAndDrop(sourceElement, targetElement).perform();
+        CSReporter.logInfo("Dragged element ${action.target} to ${action.targetDescription}");
+    }
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+    @When("I right-click on ${action.target}")
+    public void rightClickOn${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        actions.contextClick(element).perform();
+        CSReporter.logInfo("Right-clicked on element: ${action.target}");
+    }
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+    @When("I double-click on ${action.target}")
+    public void doubleClickOn${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        actions.doubleClick(element).perform();
+        CSReporter.logInfo("Double-clicked on element: ${action.target}");
+    }
+#elseif($action.type == "SCROLL" && $action.target)
+    @When("I scroll to ${action.target}")
+    public void scrollTo${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.presenceOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", element);
+        CSReporter.logInfo("Scrolled to element: ${action.target}");
+    }
+#elseif($action.type == "PAGE_REFRESH")
+    @When("I refresh the page")
+    public void refreshPage${action.id}() {
+        driver.navigate().refresh();
+        CSReporter.logInfo("Refreshed the page");
+    }
+#elseif($action.type == "SWITCH_TAB")
+    @When("I switch to the new tab")
+    public void switchToNewTab${action.id}() {
+        String originalHandle = driver.getWindowHandle();
+        for (String handle : driver.getWindowHandles()) {
+            if (!handle.equals(originalHandle)) {
+                driver.switchTo().window(handle);
+                CSReporter.logInfo("Switched to new tab: " + driver.getTitle());
+                break;
+            }
+        }
+    }
+#elseif($action.type == "SCREENSHOT")
+    @Then("I take screenshot \"${action.screenshotName}\"")
+    public void takeScreenshot${action.id}() {
+        takeScreenshot("${action.screenshotName}");
+        CSReporter.logInfo("Screenshot captured: ${action.screenshotName}");
+    }
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+    @When("I upload file \"${action.value}\" to ${action.target}")
+    public void uploadFileTo${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        element.sendKeys("${action.value}");
+        CSReporter.logInfo("Uploaded file '${action.value}' to element: ${action.target}");
+    }
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+    @When("I switch to frame ${action.target}")
+    public void switchToFrame${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        driver.switchTo().frame(element);
+        CSReporter.logInfo("Switched to frame: ${action.target}");
+    }
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+    @When("I switch back to main content")
+    public void switchToDefaultContent${action.id}() {
+        driver.switchTo().defaultContent();
+        CSReporter.logInfo("Switched back to default content");
+    }
+#elseif($action.type == "CHECK" && $action.target)
+    @When("I check ${action.target}")
+    public void check${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        if (!element.isSelected()) {
+            element.click();
+        }
+        CSReporter.logInfo("Checked checkbox: ${action.target}");
+    }
+#elseif($action.type == "UNCHECK" && $action.target)
+    @When("I uncheck ${action.target}")
+    public void uncheck${action.id}() {
+        WebElement element = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+        if (element.isSelected()) {
+            element.click();
+        }
+        CSReporter.logInfo("Unchecked checkbox: ${action.target}");
+    }
+#end
+
+#end
+    
+    @After
+    public void tearDown() {
+        // Handle scenario result
+        if (scenario.isFailed()) {
+            takeScreenshot("failure_" + System.currentTimeMillis());
+            CSReporter.logTestResult(false, "Test failed: " + scenario.getName());
+        } else {
+            CSReporter.logTestResult(true, "Test completed successfully");
+        }
+        
+        if (driver != null) {
+            driver.quit();
+            CSReporter.logInfo("WebDriver closed");
+        }
+        
+        CSReporter.endTest();
+    }
+    
+    /**
+     * Takes a screenshot with the given name
+     */
+    private void takeScreenshot(String name) {
+        try {
+            File screenshotFile = ((org.openqa.selenium.TakesScreenshot) driver).getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+            String path = "screenshots/" + name + ".png";
+            org.apache.commons.io.FileUtils.copyFile(screenshotFile, new File(path));
+            if (scenario != null) {
+                byte[] screenshot = org.apache.commons.io.FileUtils.readFileToByteArray(new File(path));
+                scenario.attach(screenshot, "image/png", name);
+            }
+        } catch (Exception e) {
+            CSReporter.logError("Failed to capture screenshot: " + e.getMessage());
+        }
+    }
+    
+#foreach($page in $pageObjects.values())
+    /**
+     * Page Object: ${page.name}
+     */
+    public static class ${page.className} extends CSBasePage {
+        
+        #foreach($element in $page.elements)
+        @CSFindBy(${element.locatorType.toLowerCase()} = "${element.locator}")
+        private CSElement ${element.name};
+        
+        #end
+        
+        public ${page.className}(WebDriver driver) {
+            super(driver);
+        }
+        
+        #foreach($element in $page.elements)
+        public CSElement get${utils.capitalizeFirstLetter($element.name)}() {
+            return ${element.name};
+        }
+        
+        #end
+    }
+#end
+}
+
+
+
+templates/codegen/java/playwright/testng.vm
+----------------------------------------------
+package ${packageName};
+
+import org.testng.annotations.Test;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.AfterMethod;
+import org.testng.Assert;
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.*;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.function.Consumer;
+
+import com.cstestforge.framework.core.CSBaseTest;
+import com.cstestforge.framework.core.CSBasePage;
+import com.cstestforge.framework.core.CSTestStep;
+import com.cstestforge.framework.utils.CSTestDataProvider;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.annotations.CSFindBy;
+import com.cstestforge.framework.reporting.CSReporter;
+import com.cstestforge.framework.config.ConfigurationManager;
+
+/**
+ * Generated Test: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+public class ${className} extends CSBaseTest {
+    
+    private Playwright playwright;
+    private Browser browser;
+    private BrowserContext context;
+    private Page page;
+    
+    // Page Objects
+    #foreach($page in $pageObjects.values())
+    private ${page.className} ${page.instanceName};
+    #end
+    
+    @BeforeMethod
+    public void setUp() {
+        // Initialize Playwright
+        playwright = Playwright.create();
+        
+        // Launch browser based on configuration
+        LaunchOptions launchOptions = new LaunchOptions()
+            .setHeadless(ConfigurationManager.getInstance().isHeadless())
+            .setSlowMo(ConfigurationManager.getInstance().getSlowMo());
+            
+        #if($browserType == "chrome")
+        browser = playwright.chromium().launch(launchOptions);
+        #elseif($browserType == "firefox")
+        browser = playwright.firefox().launch(launchOptions);
+        #elseif($browserType == "webkit")
+        browser = playwright.webkit().launch(launchOptions);
+        #else
+        browser = playwright.chromium().launch(launchOptions);
+        #end
+        
+        // Create a new browser context
+        context = browser.newContext(new Browser.NewContextOptions()
+            .setViewportSize(1280, 720)
+            .setRecordVideoDir(Paths.get("videos/"))
+            .setRecordVideoSize(1280, 720));
+            
+        // Create a new page
+        page = context.newPage();
+        
+        // Enable CSReporter for Playwright
+        CSReporter.init("${browserType}", "${baseUrl}");
+        CSReporter.logInfo("Initialized Playwright with ${browserType}");
+        
+        // Initialize Page Objects
+        #foreach($page in $pageObjects.values())
+        ${page.instanceName} = new ${page.className}(page);
+        #end
+        
+        // Navigate to application URL
+        page.navigate("${baseUrl}");
+        CSReporter.logInfo("Navigated to ${baseUrl}");
+    }
+    
+    @Test
+    public void ${testMethodName}() {
+        // Start recording test execution
+        CSReporter.startTest("${testName}");
+        
+        try {
+#foreach($action in $actions)
+#set($indent = $utils.indent(3))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}page.navigate("${action.url}");
+${indent}CSReporter.logInfo("Navigated to: ${action.url}");
+#elseif($action.type == "CLICK" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).click();
+${indent}CSReporter.logInfo("Clicked on element: ${action.target}");
+#elseif($action.type == "TYPE" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).fill("${action.value}");
+${indent}CSReporter.logInfo("Typed '${action.value}' into element: ${action.target}");
+#elseif($action.type == "SELECT" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).selectOption("${action.value}");
+${indent}CSReporter.logInfo("Selected '${action.value}' from dropdown: ${action.target}");
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "PLAYWRIGHT", "JAVA")}
+${indent}CSReporter.logInfo("Waited for ${action.waitTime} seconds");
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}${utils.generateAssertStatement("page.locator(" + $utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT") + ").isVisible()", "Element should be visible", "PLAYWRIGHT", "JAVA")}
+${indent}CSReporter.logInfo("Verified element is visible: ${action.target}");
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+${indent}String actualText = page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).textContent();
+${indent}Assert.assertEquals(actualText, "${action.expectedText}", "Text verification failed for element: ${action.target}");
+${indent}CSReporter.logInfo("Verified text '${action.expectedText}' in element: ${action.target}");
+#elseif($action.type == "HOVER" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).hover();
+${indent}CSReporter.logInfo("Hovered over element: ${action.target}");
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")})
+${indent}    .dragTo(page.locator(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "PLAYWRIGHT")}));
+${indent}CSReporter.logInfo("Dragged element ${action.target} to ${action.targetDescription}");
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).click(new Locator.ClickOptions().setButton(MouseButton.RIGHT));
+${indent}CSReporter.logInfo("Right-clicked on element: ${action.target}");
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).dblclick();
+${indent}CSReporter.logInfo("Double-clicked on element: ${action.target}");
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).scrollIntoViewIfNeeded();
+${indent}CSReporter.logInfo("Scrolled to element: ${action.target}");
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+${indent}    CSReporter.logInfo("Condition evaluated to true, executing conditional block");
+#foreach($ifActionId in $action.ifActions)
+${indent}    // Implement if action ${ifActionId}
+${indent}    ${utils.renderConditionalAction($ifActionId, $actions, 4)}
+#end
+${indent}} else {
+${indent}    CSReporter.logInfo("Condition evaluated to false, executing else block");
+#foreach($elseActionId in $action.elseActions)
+${indent}    // Implement else action ${elseActionId}
+${indent}    ${utils.renderConditionalAction($elseActionId, $actions, 4)}
+#end
+${indent}}
+${indent}CSReporter.logInfo("Completed conditional block execution");
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+${indent}    CSReporter.logInfo("Starting loop iteration");
+#foreach($loopActionId in $action.loopActions)
+${indent}    // Implement loop action ${loopActionId}
+${indent}    ${utils.renderConditionalAction($loopActionId, $actions, 4)}
+#end
+${indent}}
+${indent}CSReporter.logInfo("Completed all loop iterations");
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+${indent}CSReporter.logInfo("Executed custom code");
+#elseif($action.type == "PAGE_REFRESH")
+${indent}page.reload();
+${indent}CSReporter.logInfo("Refreshed the page");
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Create a listener for new pages
+${indent}Page newPage = context.waitForPage(() -> {
+${indent}    // Trigger the action that opens a new tab
+${indent}    page.locator(${utils.formatLocator($action.triggerLocator, $action.triggerLocatorType, "PLAYWRIGHT")}).click();
+${indent}});
+${indent}newPage.waitForLoadState();
+${indent}page = newPage; // Switch focus to the new page
+${indent}CSReporter.logInfo("Switched to new tab: " + page.url());
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}String screenshotName = "screenshot_" + System.currentTimeMillis() + ".png";
+${indent}page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("screenshots/" + screenshotName)));
+${indent}CSReporter.logInfo("Screenshot captured: " + screenshotName);
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).setInputFiles("${action.value}");
+${indent}CSReporter.logInfo("Uploaded file '${action.value}' to element: ${action.target}");
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+${indent}// Get the frame element
+${indent}ElementHandle frameElement = page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).elementHandle();
+${indent}// Get the content frame
+${indent}Frame frame = frameElement.contentFrame();
+${indent}// Perform operations on the frame
+${indent}if (frame != null) {
+${indent}    // From this point, use frame instead of page for interactions within the frame
+${indent}    CSReporter.logInfo("Switched to frame: ${action.target}");
+${indent}} else {
+${indent}    CSReporter.logError("Failed to switch to frame: ${action.target}");
+${indent}}
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+${indent}// Return to main page context
+${indent}CSReporter.logInfo("Switched back to main content");
+#elseif($action.type == "CHECK" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).check();
+${indent}CSReporter.logInfo("Checked checkbox: ${action.target}");
+#elseif($action.type == "UNCHECK" && $action.target)
+${indent}page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).uncheck();
+${indent}CSReporter.logInfo("Unchecked checkbox: ${action.target}");
+#else
+${indent}// Unsupported action type: ${action.type}
+${indent}CSReporter.logWarning("Unsupported action type: ${action.type}");
+#end
+
+#end
+            CSReporter.logTestResult(true, "Test completed successfully");
+        } catch (Exception e) {
+            CSReporter.logError("Test failed: " + e.getMessage());
+            page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("screenshots/failure_" + System.currentTimeMillis() + ".png")));
+            Assert.fail("Test failed: " + e.getMessage());
+        }
+    }
+    
+    @AfterMethod
+    public void tearDown() {
+        if (page != null) {
+            page.close();
+            CSReporter.logInfo("Page closed");
+        }
+        
+        if (context != null) {
+            context.close();
+            CSReporter.logInfo("Context closed");
+        }
+        
+        if (browser != null) {
+            browser.close();
+            CSReporter.logInfo("Browser closed");
+        }
+        
+        if (playwright != null) {
+            playwright.close();
+            CSReporter.logInfo("Playwright closed");
+        }
+        
+        CSReporter.endTest();
+    }
+    
+#foreach($page in $pageObjects.values())
+    /**
+     * Page Object: ${page.name}
+     */
+    public static class ${page.className} extends CSBasePage {
+        
+        private final Page page;
+        
+        #foreach($element in $page.elements)
+        private final String ${element.name}Selector = "${element.playwrightSelector}";
+        
+        #end
+        
+        public ${page.className}(Page page) {
+            super(page);
+            this.page = page;
+        }
+        
+        #foreach($element in $page.elements)
+        public Locator get${utils.capitalizeFirstLetter($element.name)}() {
+            return page.locator(${element.name}Selector);
+        }
+        
+        #end
+    }
+#end
+}
+
+
+templates/codegen/java/playwright/bdd.vm
+------------------------------------------------
+package ${packageName};
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.And;
+import io.cucumber.java.After;
+import io.cucumber.java.Before;
+import io.cucumber.java.Scenario;
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.*;
+import org.testng.Assert;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.function.Consumer;
+
+import com.cstestforge.framework.core.CSBaseTest;
+import com.cstestforge.framework.core.CSBasePage;
+import com.cstestforge.framework.core.CSTestStep;
+import com.cstestforge.framework.utils.CSTestDataProvider;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.annotations.CSFindBy;
+import com.cstestforge.framework.reporting.CSReporter;
+import com.cstestforge.framework.config.ConfigurationManager;
+
+/**
+ * Generated Steps: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+public class ${className} extends CSBaseTest {
+    
+    private Playwright playwright;
+    private Browser browser;
+    private BrowserContext context;
+    private Page page;
+    private Scenario scenario;
+    
+    // Page Objects
+    #foreach($page in $pageObjects.values())
+    private ${page.className} ${page.instanceName};
+    #end
+    
+    @Before
+    public void setUp(Scenario scenario) {
+        this.scenario = scenario;
+        CSReporter.startTest(scenario.getName());
+        
+        // Initialize Playwright
+        playwright = Playwright.create();
+        
+        // Launch browser based on configuration
+        LaunchOptions launchOptions = new LaunchOptions()
+            .setHeadless(ConfigurationManager.getInstance().isHeadless())
+            .setSlowMo(ConfigurationManager.getInstance().getSlowMo());
+            
+        #if($browserType == "chrome")
+        browser = playwright.chromium().launch(launchOptions);
+        #elseif($browserType == "firefox")
+        browser = playwright.firefox().launch(launchOptions);
+        #elseif($browserType == "webkit")
+        browser = playwright.webkit().launch(launchOptions);
+        #else
+        browser = playwright.chromium().launch(launchOptions);
+        #end
+        
+        // Create a new browser context
+        context = browser.newContext(new Browser.NewContextOptions()
+            .setViewportSize(1280, 720)
+            .setRecordVideoDir(Paths.get("videos/"))
+            .setRecordVideoSize(1280, 720));
+            
+        // Create a new page
+        page = context.newPage();
+        
+        // Enable CSReporter for Playwright
+        CSReporter.init("${browserType}", page.url());
+        CSReporter.logInfo("Initialized Playwright with ${browserType}");
+        
+        // Initialize Page Objects
+        #foreach($page in $pageObjects.values())
+        ${page.instanceName} = new ${page.className}(page);
+        #end
+    }
+    
+#foreach($action in $actions)
+#if($action.type == "NAVIGATE")
+    @Given("I navigate to ${action.url}")
+    public void navigateTo${action.id}() {
+        page.navigate("${action.url}");
+        CSReporter.logInfo("Navigated to: ${action.url}");
+    }
+#elseif($action.type == "CLICK" && $action.target)
+    @When("I click on ${action.target}")
+    public void clickOn${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).click();
+        CSReporter.logInfo("Clicked on element: ${action.target}");
+    }
+#elseif($action.type == "TYPE" && $action.target)
+    @When("I type \"${action.value}\" into ${action.target}")
+    public void typeInto${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).fill("${action.value}");
+        CSReporter.logInfo("Typed '${action.value}' into element: ${action.target}");
+    }
+#elseif($action.type == "TYPE" && $action.target)
+    @When("I type {string} into ${action.target}")
+    public void typeInto${action.id}(String text) {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).fill(text);
+        CSReporter.logInfo("Typed '" + text + "' into element: ${action.target}");
+    }
+#elseif($action.type == "SELECT" && $action.target)
+    @When("I select \"${action.value}\" from ${action.target}")
+    public void selectFrom${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).selectOption("${action.value}");
+        CSReporter.logInfo("Selected '${action.value}' from dropdown: ${action.target}");
+    }
+#elseif($action.type == "SELECT" && $action.target)
+    @When("I select {string} from ${action.target}")
+    public void selectFrom${action.id}(String option) {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).selectOption(option);
+        CSReporter.logInfo("Selected '" + option + "' from dropdown: ${action.target}");
+    }
+#elseif($action.type == "WAIT")
+    @When("I wait for ${action.waitTime} seconds")
+    public void waitFor${action.id}() {
+        ${utils.generateWaitStatement($action.waitTime, "PLAYWRIGHT", "JAVA")}
+        CSReporter.logInfo("Waited for ${action.waitTime} seconds");
+    }
+#elseif($action.type == "ASSERT" && $action.target)
+    @Then("${action.target} should be visible")
+    public void verify${action.id}IsVisible() {
+        boolean isVisible = page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).isVisible();
+        Assert.assertTrue(isVisible, "Element is not visible: ${action.target}");
+        CSReporter.logInfo("Verified element is visible: ${action.target}");
+    }
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+    @Then("${action.target} should have text \"${action.expectedText}\"")
+    public void verify${action.id}Text() {
+        String actualText = page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).textContent();
+        Assert.assertEquals(actualText, "${action.expectedText}", "Text verification failed for element: ${action.target}");
+        CSReporter.logInfo("Verified text '${action.expectedText}' in element: ${action.target}");
+    }
+#elseif($action.type == "HOVER" && $action.target)
+    @When("I hover over ${action.target}")
+    public void hoverOver${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).hover();
+        CSReporter.logInfo("Hovered over element: ${action.target}");
+    }
+#elseif($action.type == "DRAG_DROP" && $action.target)
+    @When("I drag ${action.target} and drop it on ${action.targetDescription}")
+    public void dragAndDrop${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")})
+            .dragTo(page.locator(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "PLAYWRIGHT")}));
+        CSReporter.logInfo("Dragged element ${action.target} to ${action.targetDescription}");
+    }
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+    @When("I right-click on ${action.target}")
+    public void rightClickOn${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).click(new Locator.ClickOptions().setButton(MouseButton.RIGHT));
+        CSReporter.logInfo("Right-clicked on element: ${action.target}");
+    }
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+    @When("I double-click on ${action.target}")
+    public void doubleClickOn${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).dblclick();
+        CSReporter.logInfo("Double-clicked on element: ${action.target}");
+    }
+#elseif($action.type == "SCROLL" && $action.target)
+    @When("I scroll to ${action.target}")
+    public void scrollTo${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).scrollIntoViewIfNeeded();
+        CSReporter.logInfo("Scrolled to element: ${action.target}");
+    }
+#elseif($action.type == "PAGE_REFRESH")
+    @When("I refresh the page")
+    public void refreshPage${action.id}() {
+        page.reload();
+        CSReporter.logInfo("Refreshed the page");
+    }
+#elseif($action.type == "SWITCH_TAB")
+    @When("I switch to the new tab")
+    public void switchToNewTab${action.id}() {
+        // Create a listener for new pages
+        Page newPage = context.waitForPage(() -> {
+            // Trigger the action that opens a new tab
+            page.locator(${utils.formatLocator($action.triggerLocator, $action.triggerLocatorType, "PLAYWRIGHT")}).click();
+        });
+        newPage.waitForLoadState();
+        page = newPage; // Switch focus to the new page
+        CSReporter.logInfo("Switched to new tab: " + page.url());
+    }
+#elseif($action.type == "SCREENSHOT")
+    @Then("I take screenshot \"${action.screenshotName}\"")
+    public void takeScreenshot${action.id}() {
+        String screenshotName = "${action.screenshotName}.png";
+        page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("screenshots/" + screenshotName)));
+        CSReporter.logInfo("Screenshot captured: " + screenshotName);
+        
+        // Attach screenshot to scenario
+        if (scenario != null) {
+            try {
+                byte[] screenshotBytes = page.screenshot();
+                scenario.attach(screenshotBytes, "image/png", screenshotName);
+            } catch (Exception e) {
+                CSReporter.logError("Failed to attach screenshot: " + e.getMessage());
+            }
+        }
+    }
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+    @When("I upload file \"${action.value}\" to ${action.target}")
+    public void uploadFileTo${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).setInputFiles("${action.value}");
+        CSReporter.logInfo("Uploaded file '${action.value}' to element: ${action.target}");
+    }
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+    @When("I switch to frame ${action.target}")
+    public void switchToFrame${action.id}() {
+        // Get the frame element
+        ElementHandle frameElement = page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).elementHandle();
+        // Get the content frame
+        Frame frame = frameElement.contentFrame();
+        // Verify frame was found
+        Assert.assertNotNull(frame, "Failed to switch to frame: ${action.target}");
+        CSReporter.logInfo("Switched to frame: ${action.target}");
+    }
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+    @When("I switch back to main content")
+    public void switchToDefaultContent${action.id}() {
+        // Return to main page context
+        CSReporter.logInfo("Switched back to main content");
+    }
+#elseif($action.type == "CHECK" && $action.target)
+    @When("I check ${action.target}")
+    public void check${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).check();
+        CSReporter.logInfo("Checked checkbox: ${action.target}");
+    }
+#elseif($action.type == "UNCHECK" && $action.target)
+    @When("I uncheck ${action.target}")
+    public void uncheck${action.id}() {
+        page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).uncheck();
+        CSReporter.logInfo("Unchecked checkbox: ${action.target}");
+    }
+#end
+
+#end
+    
+    @After
+    public void tearDown() {
+        // Handle scenario result
+        if (scenario != null && scenario.isFailed()) {
+            try {
+                byte[] screenshot = page.screenshot();
+                scenario.attach(screenshot, "image/png", "failure-screenshot");
+                CSReporter.logError("Test failed: " + scenario.getName());
+            } catch (Exception e) {
+                CSReporter.logError("Failed to capture failure screenshot: " + e.getMessage());
+            }
+        } else {
+            CSReporter.logTestResult(true, "Test completed successfully");
+        }
+        
+        if (page != null) {
+            page.close();
+            CSReporter.logInfo("Page closed");
+        }
+        
+        if (context != null) {
+            context.close();
+            CSReporter.logInfo("Context closed");
+        }
+        
+        if (browser != null) {
+            browser.close();
+            CSReporter.logInfo("Browser closed");
+        }
+        
+        if (playwright != null) {
+            playwright.close();
+            CSReporter.logInfo("Playwright closed");
+        }
+        
+        CSReporter.endTest();
+    }
+    
+#foreach($page in $pageObjects.values())
+    /**
+     * Page Object: ${page.name}
+     */
+    public static class ${page.className} extends CSBasePage {
+        
+        private final Page page;
+        
+        #foreach($element in $page.elements)
+        private final String ${element.name}Selector = "${element.playwrightSelector}";
+        
+        #end
+        
+        public ${page.className}(Page page) {
+            super(page);
+            this.page = page;
+        }
+        
+        #foreach($element in $page.elements)
+        public Locator get${utils.capitalizeFirstLetter($element.name)}() {
+            return page.locator(${element.name}Selector);
+        }
+        
+        #end
+    }
+#end
+}
+
+
+
+templates/codegen/typescript/playwright/testng.vm
+------------------------------------------------------
+
+
+import { test, expect, Page, Browser, BrowserContext, Locator } from '@playwright/test';
+import { CSReporter } from '../../framework/CSReporter';
+import { CSBasePage } from '../../framework/CSBasePage';
+import { CSBaseTest } from '../../framework/CSBaseTest';
+import { CSWaitStrategy } from '../../framework/CSWaitStrategy';
+import { ConfigurationManager } from '../../framework/config/ConfigurationManager';
+
+/**
+ * Generated Test: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+class ${className} extends CSBaseTest {
+    
+    // Page Objects
+    #foreach($page in $pageObjects.values())
+    private ${page.instanceName}: ${page.className};
+    #end
+    
+    /**
+     * Before each test method initialization
+     */
+    async beforeEach(): Promise<void> {
+        // Initialize browser and context
+        await this.initializeBrowser('${browserType}');
+        
+        // Initialize Page Objects
+        #foreach($page in $pageObjects.values())
+        this.${page.instanceName} = new ${page.className}(this.page);
+        #end
+        
+        // Initialize reporter
+        CSReporter.init('${browserType}', this.page.url());
+        CSReporter.logInfo('Initialized browser ${browserType}');
+        
+        // Navigate to application URL
+        await this.page.goto('${baseUrl}');
+        CSReporter.logInfo('Navigated to ${baseUrl}');
+    }
+    
+    /**
+     * Main test method
+     */
+    async test${utils.capitalizeFirstLetter($testMethodName)}(): Promise<void> {
+        // Start test execution
+        CSReporter.startTest('${testName}');
+        
+        try {
+#foreach($action in $actions)
+#set($indent = $utils.indent(3))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}await this.page.goto('${action.url}');
+${indent}CSReporter.logInfo('Navigated to: ${action.url}');
+#elseif($action.type == "CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click();
+${indent}CSReporter.logInfo('Clicked on element: ${action.target}');
+#elseif($action.type == "TYPE" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).fill('${action.value}');
+${indent}CSReporter.logInfo('Typed \'${action.value}\' into element: ${action.target}');
+#elseif($action.type == "SELECT" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).selectOption('${action.value}');
+${indent}CSReporter.logInfo('Selected \'${action.value}\' from dropdown: ${action.target}');
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "PLAYWRIGHT", "TYPESCRIPT")}
+${indent}CSReporter.logInfo('Waited for ${action.waitTime} seconds');
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}const isVisible${action.id} = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).isVisible();
+${indent}expect(isVisible${action.id}).toBeTruthy();
+${indent}CSReporter.logInfo('Verified element is visible: ${action.target}');
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+${indent}const actualText${action.id} = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).textContent();
+${indent}expect(actualText${action.id}).toBe('${action.expectedText}');
+${indent}CSReporter.logInfo('Verified text \'${action.expectedText}\' in element: ${action.target}');
+#elseif($action.type == "HOVER" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).hover();
+${indent}CSReporter.logInfo('Hovered over element: ${action.target}');
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")})
+${indent}    .dragTo(this.page.locator(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "PLAYWRIGHT_TS")}));
+${indent}CSReporter.logInfo('Dragged element ${action.target} to ${action.targetDescription}');
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click({ button: 'right' });
+${indent}CSReporter.logInfo('Right-clicked on element: ${action.target}');
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).dblclick();
+${indent}CSReporter.logInfo('Double-clicked on element: ${action.target}');
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).scrollIntoViewIfNeeded();
+${indent}CSReporter.logInfo('Scrolled to element: ${action.target}');
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+${indent}    CSReporter.logInfo('Condition evaluated to true, executing conditional block');
+#foreach($ifActionId in $action.ifActions)
+${indent}    // Implement if action ${ifActionId}
+${indent}    ${utils.renderConditionalAction($ifActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}} else {
+${indent}    CSReporter.logInfo('Condition evaluated to false, executing else block');
+#foreach($elseActionId in $action.elseActions)
+${indent}    // Implement else action ${elseActionId}
+${indent}    ${utils.renderConditionalAction($elseActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}}
+${indent}CSReporter.logInfo('Completed conditional block execution');
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+${indent}    CSReporter.logInfo('Starting loop iteration');
+#foreach($loopActionId in $action.loopActions)
+${indent}    // Implement loop action ${loopActionId}
+${indent}    ${utils.renderConditionalAction($loopActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}}
+${indent}CSReporter.logInfo('Completed all loop iterations');
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+${indent}CSReporter.logInfo('Executed custom code');
+#elseif($action.type == "PAGE_REFRESH")
+${indent}await this.page.reload();
+${indent}CSReporter.logInfo('Refreshed the page');
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Wait for new page to open
+${indent}const [newPage] = await Promise.all([
+${indent}    this.context.waitForEvent('page'),
+${indent}    this.page.locator(${utils.formatLocator($action.triggerLocator, $action.triggerLocatorType, "PLAYWRIGHT_TS")}).click()
+${indent}]);
+${indent}await newPage.waitForLoadState();
+${indent}this.page = newPage;
+${indent}CSReporter.logInfo('Switched to new tab: ' + this.page.url());
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}const screenshotName = 'screenshot_${action.id}_' + Date.now() + '.png';
+${indent}await this.page.screenshot({ path: `screenshots/${screenshotName}` });
+${indent}CSReporter.logInfo('Screenshot captured: ' + screenshotName);
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).setInputFiles('${action.value}');
+${indent}CSReporter.logInfo('Uploaded file \'${action.value}\' to element: ${action.target}');
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+${indent}// Get the frame element
+${indent}const frameElement = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).elementHandle();
+${indent}// Get the content frame
+${indent}const frame = await frameElement?.contentFrame();
+${indent}// Check if frame was found
+${indent}expect(frame).toBeTruthy();
+${indent}CSReporter.logInfo('Switched to frame: ${action.target}');
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+${indent}// Return to main page context
+${indent}CSReporter.logInfo('Switched back to main content');
+#elseif($action.type == "CHECK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).check();
+${indent}CSReporter.logInfo('Checked checkbox: ${action.target}');
+#elseif($action.type == "UNCHECK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).uncheck();
+${indent}CSReporter.logInfo('Unchecked checkbox: ${action.target}');
+#else
+${indent}// Unsupported action type: ${action.type}
+${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
+#end
+
+#end
+            CSReporter.logTestResult(true, 'Test completed successfully');
+        } catch (error) {
+            CSReporter.logError(`Test failed: ${error.message}`);
+            await this.page.screenshot({ path: `screenshots/failure_${Date.now()}.png` });
+            throw error;
+        }
+    }
+    
+    /**
+     * After each test method cleanup
+     */
+    async afterEach(): Promise<void> {
+        if (this.page) {
+            await this.page.close();
+            CSReporter.logInfo('Page closed');
+        }
+        
+        if (this.context) {
+            await this.context.close();
+            CSReporter.logInfo('Context closed');
+        }
+        
+        if (this.browser) {
+            await this.browser.close();
+            CSReporter.logInfo('Browser closed');
+        }
+        
+        CSReporter.endTest();
+    }
+}
+
+#foreach($page in $pageObjects.values())
+/**
+ * Page Object: ${page.name}
+ */
+class ${page.className} extends CSBasePage {
+    
+    private page: Page;
+    
+    #foreach($element in $page.elements)
+    private readonly ${element.name}Selector = '${element.playwrightSelector}';
+    
+    #end
+    
+    constructor(page: Page) {
+        super(page);
+        this.page = page;
+    }
+    
+    #foreach($element in $page.elements)
+    ${element.getterMethod}(): Locator {
+        return this.page.locator(this.${element.name}Selector);
+    }
+    
+    #end
+}
+#end
+
+// Execute tests using TestNG-style pattern
+test.describe('${testName}', () => {
+    const testInstance = new ${className}();
+    
+    test.beforeEach(async () => {
+        await testInstance.beforeEach();
+    });
+    
+    test('${testMethodName}', async () => {
+        await testInstance.test${utils.capitalizeFirstLetter($testMethodName)}();
+    });
+    
+    test.afterEach(async () => {
+        await testInstance.afterEach();
+    });
+});
+
+
+templates/codegen/typescript/plawright/bdd.vm
+-------------------------------------------------
+
+import { Before, After, Given, When, Then, setDefaultTimeout } from '@cucumber/cucumber';
+import { Browser, BrowserContext, Page, Locator, expect } from '@playwright/test';
+import { CSReporter } from '../../framework/CSReporter';
+import { CSBasePage } from '../../framework/CSBasePage';
+import { CSBaseTest } from '../../framework/CSBaseTest';
+import { CSWaitStrategy } from '../../framework/CSWaitStrategy';
+import { ConfigurationManager } from '../../framework/config/ConfigurationManager';
+
+/**
+ * Generated Steps: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+
+// Set default timeout
+setDefaultTimeout(60 * 1000);
+
+// Global test state
+const testState: {
+    browser?: Browser;
+    context?: BrowserContext;
+    page?: Page;
+    #foreach($page in $pageObjects.values())
+    ${page.instanceName}?: ${page.className};
+    #end
+} = {};
+
+/**
+ * Initialize browser and setup before each test
+ */
+Before(async function(scenario) {
+    // Create a CSBaseTest instance to reuse initialization logic
+    const baseTest = new CSBaseTest();
+    
+    // Initialize browser
+    await baseTest.initializeBrowser('${browserType}');
+    
+    // Assign test objects to the global state
+    testState.browser = baseTest.browser;
+    testState.context = baseTest.context;
+    testState.page = baseTest.page;
+    
+    // Initialize Page Objects
+    #foreach($page in $pageObjects.values())
+    testState.${page.instanceName} = new ${page.className}(testState.page);
+    #end
+    
+    // Initialize reporter
+    CSReporter.startTest(scenario.pickle.name);
+    CSReporter.logInfo('Initialized browser ${browserType}');
+    
+    // Navigate to application URL
+    await testState.page.goto('${baseUrl}');
+    CSReporter.logInfo('Navigated to ${baseUrl}');
+});
+
+/**
+ * Clean up after each test
+ */
+After(async function(scenario) {
+    // Handle scenario result
+    if (scenario.result.status === 'FAILED') {
+        // Take screenshot if the scenario failed
+        if (testState.page) {
+            const screenshot = await testState.page.screenshot();
+            await this.attach(screenshot, 'image/png');
+            CSReporter.logError(`Test failed: ${scenario.pickle.name}`);
+        }
+    } else {
+        CSReporter.logTestResult(true, 'Test completed successfully');
+    }
+    
+    // Close browser resources
+    if (testState.page) {
+        await testState.page.close();
+        CSReporter.logInfo('Page closed');
+    }
+    
+    if (testState.context) {
+        await testState.context.close();
+        CSReporter.logInfo('Context closed');
+    }
+    
+    if (testState.browser) {
+        await testState.browser.close();
+        CSReporter.logInfo('Browser closed');
+    }
+    
+    CSReporter.endTest();
+});
+
+#foreach($action in $actions)
+#if($action.type == "NAVIGATE")
+Given('I navigate to {string}', async function(url: string) {
+    await testState.page.goto(url);
+    CSReporter.logInfo(`Navigated to: ${url}`);
+});
+
+Given('I navigate to ${action.url}', async function() {
+    await testState.page.goto('${action.url}');
+    CSReporter.logInfo('Navigated to: ${action.url}');
+});
+#elseif($action.type == "CLICK" && $action.target)
+When('I click on ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click();
+    CSReporter.logInfo('Clicked on element: ${action.target}');
+});
+#elseif($action.type == "TYPE" && $action.target)
+When('I type {string} into ${action.target}', async function(text: string) {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).fill(text);
+    CSReporter.logInfo(`Typed '${text}' into element: ${action.target}`);
+});
+#elseif($action.type == "SELECT" && $action.target)
+When('I select {string} from ${action.target}', async function(option: string) {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).selectOption(option);
+    CSReporter.logInfo(`Selected '${option}' from dropdown: ${action.target}`);
+});
+#elseif($action.type == "WAIT")
+When('I wait for {int} seconds', async function(seconds: number) {
+    await testState.page.waitForTimeout(seconds * 1000);
+    CSReporter.logInfo(`Waited for ${seconds} seconds`);
+});
+#elseif($action.type == "ASSERT" && $action.target)
+Then('${action.target} should be visible', async function() {
+    const isVisible = await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).isVisible();
+    expect(isVisible).toBeTruthy();
+    CSReporter.logInfo(`Verified element is visible: ${action.target}`);
+});
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+Then('${action.target} should have text {string}', async function(expectedText: string) {
+    const actualText = await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).textContent();
+    expect(actualText).toBe(expectedText);
+    CSReporter.logInfo(`Verified text '${expectedText}' in element: ${action.target}`);
+});
+#elseif($action.type == "HOVER" && $action.target)
+When('I hover over ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).hover();
+    CSReporter.logInfo(`Hovered over element: ${action.target}`);
+});
+#elseif($action.type == "DRAG_DROP" && $action.target)
+When('I drag ${action.target} and drop it on ${action.targetDescription}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")})
+        .dragTo(testState.page.locator(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "PLAYWRIGHT_TS")}));
+    CSReporter.logInfo(`Dragged element ${action.target} to ${action.targetDescription}`);
+});
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+When('I right-click on ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click({ button: 'right' });
+    CSReporter.logInfo(`Right-clicked on element: ${action.target}`);
+});
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+When('I double-click on ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).dblclick();
+    CSReporter.logInfo(`Double-clicked on element: ${action.target}`);
+});
+#elseif($action.type == "SCROLL" && $action.target)
+When('I scroll to ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).scrollIntoViewIfNeeded();
+    CSReporter.logInfo(`Scrolled to element: ${action.target}`);
+});
+#elseif($action.type == "PAGE_REFRESH")
+When('I refresh the page', async function() {
+    await testState.page.reload();
+    CSReporter.logInfo('Refreshed the page');
+});
+#elseif($action.type == "SWITCH_TAB")
+When('I switch to the new tab', async function() {
+    const [newPage] = await Promise.all([
+        testState.context.waitForEvent('page'),
+        testState.page.locator(${utils.formatLocator($action.triggerLocator, $action.triggerLocatorType, "PLAYWRIGHT_TS")}).click()
+    ]);
+    await newPage.waitForLoadState();
+    testState.page = newPage;
+    CSReporter.logInfo(`Switched to new tab: ${newPage.url()}`);
+});
+#elseif($action.type == "SCREENSHOT")
+Then('I take screenshot {string}', async function(screenshotName: string) {
+    await testState.page.screenshot({ path: `screenshots/${screenshotName}.png` });
+    CSReporter.logInfo(`Captured screenshot: ${screenshotName}`);
+});
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+When('I upload file {string} to ${action.target}', async function(filePath: string) {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).setInputFiles(filePath);
+    CSReporter.logInfo(`Uploaded file '${filePath}' to element: ${action.target}`);
+});
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+When('I switch to frame ${action.target}', async function() {
+    // Get the frame element
+    const frameElement = await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).elementHandle();
+    // Get the content frame
+    const frame = await frameElement?.contentFrame();
+    // Check if frame was found
+    expect(frame).toBeTruthy();
+    CSReporter.logInfo(`Switched to frame: ${action.target}`);
+});
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+When('I switch back to main content', async function() {
+    // Return to main page context
+    CSReporter.logInfo('Switched back to main content');
+});
+#elseif($action.type == "CHECK" && $action.target)
+When('I check ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).check();
+    CSReporter.logInfo(`Checked checkbox: ${action.target}`);
+});
+#elseif($action.type == "UNCHECK" && $action.target)
+When('I uncheck ${action.target}', async function() {
+    await testState.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).uncheck();
+    CSReporter.logInfo(`Unchecked checkbox: ${action.target}`);
+});
+#end
+
+#end
+
+#foreach($page in $pageObjects.values())
+/**
+ * Page Object: ${page.name}
+ */
+class ${page.className} extends CSBasePage {
+    
+    private page: Page;
+    
+    #foreach($element in $page.elements)
+    private readonly ${element.name}Selector = '${element.playwrightSelector}';
+    
+    #end
+    
+    constructor(page: Page) {
+        super(page);
+        this.page = page;
+    }
+    
+    #foreach($element in $page.elements)
+    ${element.getterMethod}(): Locator {
+        return this.page.locator(this.${element.name}Selector);
+    }
+    
+    #end
+}
+#end
+
