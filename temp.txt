@@ -1,0 +1,229 @@
+import { test, expect, Page, Browser, BrowserContext, Locator } from '@playwright/test';
+import { CSReporter } from '../../framework/CSReporter';
+import { CSBasePage } from '../../framework/CSBasePage';
+import { CSBaseTest } from '../../framework/CSBaseTest';
+import { CSWaitStrategy } from '../../framework/CSWaitStrategy';
+import { ConfigurationManager } from '../../framework/config/ConfigurationManager';
+
+/**
+ * Generated Test: ${testName}
+ * Description: ${testDescription}
+ * Created by CSTestForge on ${date}
+ */
+class ${className} extends CSBaseTest {
+    
+    // Page Objects
+#foreach($page in $pageObjects.values())
+    private ${page.instanceName}: ${page.className};
+#end
+    
+    /**
+     * Before each test method initialization
+     */
+    async beforeEach(): Promise<void> {
+        // Initialize browser and context
+        await this.initializeBrowser('${browserType}');
+        
+        // Initialize Page Objects
+#foreach($page in $pageObjects.values())
+        this.${page.instanceName} = new ${page.className}(this.page);
+#end
+        
+        // Initialize reporter
+        CSReporter.init('${browserType}', this.page.url());
+        CSReporter.logInfo('Initialized browser ${browserType}');
+        
+        // Navigate to application URL
+        await this.page.goto('${baseUrl}');
+        CSReporter.logInfo('Navigated to ${baseUrl}');
+    }
+    
+    /**
+     * Main test method
+     */
+    async test${utils.capitalizeFirstLetter($testMethodName)}(): Promise<void> {
+        // Start test execution
+        CSReporter.startTest('${testName}');
+        
+        try {
+#foreach($action in $actions)
+#set($indent = $utils.indent(3))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}await this.page.goto('${action.url}');
+${indent}CSReporter.logInfo('Navigated to: ${action.url}');
+#elseif($action.type == "CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click();
+${indent}CSReporter.logInfo('Clicked on element: ${action.target}');
+#elseif($action.type == "TYPE" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).fill('${action.value}');
+${indent}CSReporter.logInfo('Typed \'${action.value}\' into element: ${action.target}');
+#elseif($action.type == "SELECT" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).selectOption('${action.value}');
+${indent}CSReporter.logInfo('Selected \'${action.value}\' from dropdown: ${action.target}');
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "PLAYWRIGHT", "TYPESCRIPT")}
+${indent}CSReporter.logInfo('Waited for ${action.waitTime} seconds');
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}const isVisible${action.id} = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).isVisible();
+${indent}expect(isVisible${action.id}).toBeTruthy();
+${indent}CSReporter.logInfo('Verified element is visible: ${action.target}');
+#elseif($action.type == "ASSERT_TEXT" && $action.target)
+${indent}const actualText${action.id} = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).textContent();
+${indent}expect(actualText${action.id}).toBe('${action.expectedText}');
+${indent}CSReporter.logInfo('Verified text \'${action.expectedText}\' in element: ${action.target}');
+#elseif($action.type == "HOVER" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).hover();
+${indent}CSReporter.logInfo('Hovered over element: ${action.target}');
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")})
+${indent}    .dragTo(this.page.locator(${utils.formatLocator($action.targetLocator, $action.targetLocatorType, "PLAYWRIGHT_TS")}));
+${indent}CSReporter.logInfo('Dragged element ${action.target} to ${action.targetDescription}');
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).click({ button: 'right' });
+${indent}CSReporter.logInfo('Right-clicked on element: ${action.target}');
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).dblclick();
+${indent}CSReporter.logInfo('Double-clicked on element: ${action.target}');
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).scrollIntoViewIfNeeded();
+${indent}CSReporter.logInfo('Scrolled to element: ${action.target}');
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+${indent}    CSReporter.logInfo('Condition evaluated to true, executing conditional block');
+#foreach($ifActionId in $action.ifActions)
+${indent}    // Implement if action ${ifActionId}
+${indent}    ${utils.renderConditionalAction($ifActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}} else {
+${indent}    CSReporter.logInfo('Condition evaluated to false, executing else block');
+#foreach($elseActionId in $action.elseActions)
+${indent}    // Implement else action ${elseActionId}
+${indent}    ${utils.renderConditionalAction($elseActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}}
+${indent}CSReporter.logInfo('Completed conditional block execution');
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+${indent}    CSReporter.logInfo('Starting loop iteration');
+#foreach($loopActionId in $action.loopActions)
+${indent}    // Implement loop action ${loopActionId}
+${indent}    ${utils.renderConditionalAction($loopActionId, $actions, 4, "TYPESCRIPT")}
+#end
+${indent}}
+${indent}CSReporter.logInfo('Completed all loop iterations');
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+${indent}CSReporter.logInfo('Executed custom code');
+#elseif($action.type == "PAGE_REFRESH")
+${indent}await this.page.reload();
+${indent}CSReporter.logInfo('Refreshed the page');
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Wait for new page to open
+${indent}const [newPage] = await Promise.all([
+${indent}    this.context.waitForEvent('page'),
+${indent}    this.page.locator(${utils.formatLocator($action.triggerLocator, $action.triggerLocatorType, "PLAYWRIGHT_TS")}).click()
+${indent}]);
+${indent}await newPage.waitForLoadState();
+${indent}this.page = newPage;
+${indent}CSReporter.logInfo('Switched to new tab: ' + this.page.url());
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}const screenshotName = 'screenshot_${action.id}_' + Date.now() + '.png';
+${indent}await this.page.screenshot({ path: `screenshots/${screenshotName}` });
+${indent}CSReporter.logInfo('Screenshot captured: ' + screenshotName);
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).setInputFiles('${action.value}');
+${indent}CSReporter.logInfo('Uploaded file \'${action.value}\' to element: ${action.target}');
+#elseif($action.type == "SWITCH_FRAME" && $action.target)
+${indent}// Get the frame element
+${indent}const frameElement = await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).elementHandle();
+${indent}// Get the content frame
+${indent}const frame = await frameElement?.contentFrame();
+${indent}// Check if frame was found
+${indent}expect(frame).toBeTruthy();
+${indent}CSReporter.logInfo('Switched to frame: ${action.target}');
+#elseif($action.type == "SWITCH_DEFAULT_CONTENT")
+${indent}// Return to main page context
+${indent}CSReporter.logInfo('Switched back to main content');
+#elseif($action.type == "CHECK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).check();
+${indent}CSReporter.logInfo('Checked checkbox: ${action.target}');
+#elseif($action.type == "UNCHECK" && $action.target)
+${indent}await this.page.locator(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT_TS")}).uncheck();
+${indent}CSReporter.logInfo('Unchecked checkbox: ${action.target}');
+#else
+${indent}// Unsupported action type: ${action.type}
+${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
+#end
+#end
+            CSReporter.logTestResult(true, 'Test completed successfully');
+        } catch (error) {
+            CSReporter.logError(`Test failed: ${error.message}`);
+            await this.page.screenshot({ path: `screenshots/failure_${Date.now()}.png` });
+            throw error;
+        }
+    }
+    
+    /**
+     * After each test method cleanup
+     */
+    async afterEach(): Promise<void> {
+        if (this.page) {
+            await this.page.close();
+            CSReporter.logInfo('Page closed');
+        }
+        
+        if (this.context) {
+            await this.context.close();
+            CSReporter.logInfo('Context closed');
+        }
+        
+        if (this.browser) {
+            await this.browser.close();
+            CSReporter.logInfo('Browser closed');
+        }
+        
+        CSReporter.endTest();
+    }
+}
+
+#foreach($page in $pageObjects.values())
+/**
+ * Page Object: ${page.name}
+ */
+class ${page.className} extends CSBasePage {
+    private page: Page;
+#foreach($element in $page.elements)
+    private readonly ${element.name}Selector = '${element.playwrightSelector}';
+#end
+    
+    constructor(page: Page) {
+        super(page);
+        this.page = page;
+    }
+#foreach($element in $page.elements)
+    ${element.getterMethod}(): Locator {
+        return this.page.locator(this.${element.name}Selector);
+    }
+#end
+}
+#end
+
+// Execute tests using TestNG-style pattern
+test.describe('${testName}', () => {
+    const testInstance = new ${className}();
+    
+    test.beforeEach(async () => {
+        await testInstance.beforeEach();
+    });
+    
+    test('${testMethodName}', async () => {
+        await testInstance.test${utils.capitalizeFirstLetter($testMethodName)}();
+    });
+    
+    test.afterEach(async () => {
+        await testInstance.afterEach();
+    });
+});
