@@ -2084,6 +2084,11 @@ interface BrowserFrameProps {
   isRecording: boolean;
 }
 
+// Define a custom interface for the iframe's contentWindow
+interface CustomWindow extends Window {
+  removeCSTestForgeRecorder?: () => void;
+}
+
 /**
  * Component that renders an iframe containing the application under test.
  * Handles communication with the iframe for test recording.
@@ -2137,15 +2142,18 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
 
     try {
       const iframe = iframeRef.current;
-      if (iframe && iframe.contentWindow) {
-        // Update current title and URL
-        setPageTitle(iframe.contentWindow.document.title);
-        setCurrentUrl(iframe.contentWindow.location.href);
+      if (!iframe) return;
+      
+      const contentWindow = iframe.contentWindow as CustomWindow | null;
+      if (!contentWindow) return;
 
-        // Check if we should inject the recording script
-        if (isRecording && !injected) {
-          injectRecordingScript();
-        }
+      // Update current title and URL
+      setPageTitle(contentWindow.document.title);
+      setCurrentUrl(contentWindow.location.href);
+
+      // Check if we should inject the recording script
+      if (isRecording && !injected) {
+        injectRecordingScript();
       }
     } catch (err) {
       console.error('Error accessing iframe content:', err);
@@ -2164,9 +2172,12 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
   const injectRecordingScript = () => {
     try {
       const iframe = iframeRef.current;
-      if (!iframe || !iframe.contentWindow) return;
+      if (!iframe) return;
+      
+      const contentWindow = iframe.contentWindow as CustomWindow | null;
+      if (!contentWindow) return;
 
-      const iframeDocument = iframe.contentWindow.document;
+      const iframeDocument = contentWindow.document;
 
       // Create script element for injector
       const injectorScript = iframeDocument.createElement('script');
@@ -2437,15 +2448,18 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
   const removeRecordingScript = () => {
     try {
       const iframe = iframeRef.current;
-      if (!iframe || !iframe.contentWindow) return;
+      if (!iframe) return;
+      
+      const contentWindow = iframe.contentWindow as CustomWindow | null;
+      if (!contentWindow) return;
 
       // Call cleanup function
-      if (typeof iframe.contentWindow.removeCSTestForgeRecorder === 'function') {
-        iframe.contentWindow.removeCSTestForgeRecorder();
+      if (typeof contentWindow.removeCSTestForgeRecorder === 'function') {
+        contentWindow.removeCSTestForgeRecorder();
       }
 
       // Remove script element
-      const script = iframe.contentWindow.document.getElementById('cstestforge-recorder-script');
+      const script = contentWindow.document.getElementById('cstestforge-recorder-script');
       if (script) {
         script.remove();
       }
@@ -2467,9 +2481,13 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
   // Navigate back in the iframe history
   const navigateBack = () => {
     try {
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.history.back();
-      }
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      
+      const contentWindow = iframe.contentWindow as CustomWindow | null;
+      if (!contentWindow) return;
+      
+      contentWindow.history.back();
     } catch (err) {
       console.error('Error navigating back:', err);
     }
@@ -2478,9 +2496,13 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
   // Navigate forward in the iframe history
   const navigateForward = () => {
     try {
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        iframeRef.current.contentWindow.history.forward();
-      }
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      
+      const contentWindow = iframe.contentWindow as CustomWindow | null;
+      if (!contentWindow) return;
+      
+      contentWindow.history.forward();
     } catch (err) {
       console.error('Error navigating forward:', err);
     }
@@ -2561,7 +2583,6 @@ const BrowserFrame: React.FC<BrowserFrameProps> = ({ targetUrl, isRecording }) =
 };
 
 export default BrowserFrame;
-
 
 // cstestforge/frontend/src/components/recorder/ActionToolbar.tsx
 
