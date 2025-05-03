@@ -1162,21 +1162,21 @@ import { ConfigurationManager } from '../../framework/config/ConfigurationManage
 class ${className} extends CSBaseTest {
     
     // Page Objects
-    #foreach($page in $pageObjects.values())
+#foreach($page in $pageObjects.values())
     private ${page.instanceName}: ${page.className};
-    #end
+#end
     
     /**
      * Before each test method initialization
      */
-    async beforeEach(): Promise<void> {
+    async beforeEach() {
         // Initialize browser and context
         await this.initializeBrowser('${browserType}');
         
         // Initialize Page Objects
-        #foreach($page in $pageObjects.values())
+#foreach($page in $pageObjects.values())
         this.${page.instanceName} = new ${page.className}(this.page);
-        #end
+#end
         
         // Initialize reporter
         CSReporter.init('${browserType}', this.page.url());
@@ -1190,7 +1190,7 @@ class ${className} extends CSBaseTest {
     /**
      * Main test method
      */
-    async test${utils.capitalizeFirstLetter($testMethodName)}(): Promise<void> {
+    async test${utils.capitalizeFirstLetter($testMethodName)}() {
         // Start test execution
         CSReporter.startTest('${testName}');
         
@@ -1306,7 +1306,6 @@ ${indent}CSReporter.logInfo('Unchecked checkbox: ${action.target}');
 ${indent}// Unsupported action type: ${action.type}
 ${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
 #end
-
 #end
             CSReporter.logTestResult(true, 'Test completed successfully');
         } catch (error) {
@@ -1319,7 +1318,7 @@ ${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
     /**
      * After each test method cleanup
      */
-    async afterEach(): Promise<void> {
+    async afterEach() {
         if (this.page) {
             await this.page.close();
             CSReporter.logInfo('Page closed');
@@ -1344,25 +1343,20 @@ ${indent}CSReporter.logWarning('Unsupported action type: ${action.type}');
  * Page Object: ${page.name}
  */
 class ${page.className} extends CSBasePage {
-    
     private page: Page;
-    
-    #foreach($element in $page.elements)
+#foreach($element in $page.elements)
     private readonly ${element.name}Selector = '${element.playwrightSelector}';
-    
-    #end
+#end
     
     constructor(page: Page) {
         super(page);
         this.page = page;
     }
-    
-    #foreach($element in $page.elements)
+#foreach($element in $page.elements)
     ${element.getterMethod}(): Locator {
         return this.page.locator(this.${element.name}Selector);
     }
-    
-    #end
+#end
 }
 #end
 
