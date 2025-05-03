@@ -1,0 +1,5491 @@
+package ${packageName};
+
+import org.testng.annotations.Test;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.AfterMethod;
+import org.testng.Assert;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.By;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.Select;
+
+import com.cstestforge.framework.core.CSBaseTest;
+import com.cstestforge.framework.core.CSBasePage;
+import com.cstestforge.framework.core.CSTestStep;
+import com.cstestforge.framework.utils.CSTestDataProvider;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.annotations.CSFindBy;
+
+import java.time.Duration;
+
+/**
+ * Generated test from CSTestForge
+ * 
+ * Test Name: ${testName}
+ * Date: ${date}
+ */
+public class ${className} extends CSBaseTest {
+
+    private WebDriver driver;
+    private WebDriverWait wait;
+    private Actions actions;
+
+    @BeforeMethod
+    public void setUp() {
+        // Initialize the driver
+        driver = new ChromeDriver();
+        driver.manage().window().maximize();
+        
+        // Initialize wait and actions
+        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        actions = new Actions(driver);
+    }
+    
+    @Test
+    public void ${testName}() {
+        try {
+#foreach($action in $actions)
+#set($indent = $utils.indent(3))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}driver.get("${action.url}");
+#elseif($action.type == "CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.elementToBeClickable(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.click();
+#elseif($action.type == "TYPE" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.clear();
+${indent}element${action.id}.sendKeys("${action.value}");
+#elseif($action.type == "SELECT" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}new Select(element${action.id}).selectByVisibleText("${action.value}");
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "SELENIUM", "JAVA")}
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}${utils.generateAssertStatement("element" + $action.id + ".isDisplayed()", "Element should be visible", "SELENIUM", "JAVA")}
+#elseif($action.type == "HOVER" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.moveToElement(element${action.id}).perform();
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}WebElement targetElement = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("TARGET_SELECTOR"))); // Update target selector
+${indent}actions.dragAndDrop(element${action.id}, targetElement).perform();
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.contextClick(element${action.id}).perform();
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}actions.doubleClick(element${action.id}).perform();
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}((org.openqa.selenium.JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", element${action.id});
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+#foreach($ifActionId in $action.ifActions)
+${indent}    // TODO: Implement if action ${ifActionId}
+#end
+${indent}} else {
+#foreach($elseActionId in $action.elseActions)
+${indent}    // TODO: Implement else action ${elseActionId}
+#end
+${indent}}
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+#foreach($loopActionId in $action.loopActions)
+${indent}    // TODO: Implement loop action ${loopActionId}
+#end
+${indent}}
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+#elseif($action.type == "PAGE_REFRESH")
+${indent}driver.navigate().refresh();
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Switch to a new tab
+${indent}String originalHandle = driver.getWindowHandle();
+${indent}for (String handle : driver.getWindowHandles()) {
+${indent}    if (!handle.equals(originalHandle)) {
+${indent}        driver.switchTo().window(handle);
+${indent}        break;
+${indent}    }
+${indent}}
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}File screenshotFile = ((org.openqa.selenium.TakesScreenshot) driver).getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+${indent}try {
+${indent}    org.apache.commons.io.FileUtils.copyFile(screenshotFile, new File("screenshot_" + System.currentTimeMillis() + ".png"));
+${indent}} catch (Exception e) {
+${indent}    e.printStackTrace();
+${indent}}
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}WebElement element${action.id} = wait.until(ExpectedConditions.visibilityOfElementLocated(${utils.formatLocator($action.locator, $action.locatorType, "SELENIUM")}));
+${indent}element${action.id}.sendKeys("${action.value}"); // Path to file
+#else
+${indent}// Unsupported action type: ${action.type}
+#end
+
+#end
+        } catch (Exception e) {
+            e.printStackTrace();
+            Assert.fail("Test failed: " + e.getMessage());
+        }
+    }
+    
+    @AfterMethod
+    public void tearDown() {
+        // Close the browser
+        if (driver != null) {
+            driver.quit();
+        }
+    }
+    
+#if(!$pageObjects.isEmpty())
+    /**
+     * Page Objects
+     */
+#foreach($pageObject in $pageObjects.values())
+    // ${pageObject.name} element
+    @CSFindBy(${pageObject.locatorType.toLowerCase()} = "${pageObject.locator}")
+    private CSElement ${pageObject.name};
+    
+#end
+#end
+}
+
+
+
+import { test, expect } from '@playwright/test';
+import { CSTestBase } from './framework/CSTestBase';
+import { CSElement } from './framework/CSElement';
+import { CSLocator } from './framework/CSLocator';
+
+/**
+ * Generated test from CSTestForge
+ * 
+ * Test Name: ${testName}
+ * Date: ${date}
+ */
+test('${testName}', async ({ page }) => {
+  // Initialize CS test framework
+  const csTest = new CSTestBase(page);
+  
+#foreach($action in $actions)
+#set($indent = $utils.indent(1))
+${indent}// ${action.description}
+#if($action.type == "NAVIGATE")
+${indent}await page.goto('${action.url}');
+#elseif($action.type == "CLICK" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.click();
+#elseif($action.type == "TYPE" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.fill('${action.value}');
+#elseif($action.type == "SELECT" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.selectOption('${action.value}');
+#elseif($action.type == "WAIT")
+${indent}${utils.generateWaitStatement($action.waitTime, "PLAYWRIGHT", "TYPESCRIPT")}
+#elseif($action.type == "ASSERT" && $action.target)
+${indent}await expect(${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}).toBeVisible();
+#elseif($action.type == "HOVER" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.hover();
+#elseif($action.type == "DRAG_DROP" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.dragTo(page.locator('TARGET_SELECTOR')); // Update target selector
+#elseif($action.type == "RIGHT_CLICK" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.click({ button: 'right' });
+#elseif($action.type == "DOUBLE_CLICK" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.dblclick();
+#elseif($action.type == "SCROLL" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.scrollIntoViewIfNeeded();
+#elseif($action.type == "CONDITION")
+${indent}if (${action.condition}) {
+#foreach($ifActionId in $action.ifActions)
+${indent}  // TODO: Implement if action ${ifActionId}
+#end
+${indent}} else {
+#foreach($elseActionId in $action.elseActions)
+${indent}  // TODO: Implement else action ${elseActionId}
+#end
+${indent}}
+#elseif($action.type == "LOOP")
+${indent}for (${action.loopCondition}) {
+#foreach($loopActionId in $action.loopActions)
+${indent}  // TODO: Implement loop action ${loopActionId}
+#end
+${indent}}
+#elseif($action.type == "CUSTOM_CODE")
+${indent}// Custom code block
+${indent}${action.customCode}
+#elseif($action.type == "PAGE_REFRESH")
+${indent}await page.reload();
+#elseif($action.type == "SWITCH_TAB")
+${indent}// Switch to a new tab
+${indent}const pages = await page.context().pages();
+${indent}const newPage = pages[pages.length - 1];
+${indent}await newPage.bringToFront();
+#elseif($action.type == "SCREENSHOT")
+${indent}// Take screenshot
+${indent}await page.screenshot({ path: `screenshot_${Date.now()}.png` });
+#elseif($action.type == "FILE_UPLOAD" && $action.target)
+${indent}await ${utils.formatLocator($action.locator, $action.locatorType, "PLAYWRIGHT")}.setInputFiles('${action.value}'); // Path to file
+#else
+${indent}// Unsupported action type: ${action.type}
+#end
+
+#end
+});
+
+/**
+ * Page Objects
+ */
+#if(!$pageObjects.isEmpty())
+class ${className}Page {
+  constructor(private page: Page) {}
+  
+#foreach($pageObject in $pageObjects.values())
+  // ${pageObject.name} element
+  ${pageObject.name} = this.page.locator('${pageObject.locator}');
+  
+#end
+}
+#end
+
+
+
+package com.cstestforge.framework.core;
+
+import com.cstestforge.framework.config.ConfigurationManager;
+import com.cstestforge.framework.driver.DriverManager;
+import com.cstestforge.framework.reporting.CSReporter;
+import com.cstestforge.framework.utils.CSScreenshotManager;
+import com.cstestforge.framework.utils.CSWaitStrategy;
+import org.openqa.selenium.WebDriver;
+import org.testng.ITestResult;
+import org.testng.annotations.*;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+
+/**
+ * Base test class for all CSTestForge test cases.
+ * Handles common test lifecycle operations including:
+ * - Driver initialization and cleanup
+ * - Page object initialization
+ * - Configuration loading
+ * - Reporting and logging
+ * - Screenshots
+ */
+public class CSBaseTest {
+
+    protected WebDriver driver;
+    protected CSReporter reporter;
+    protected ConfigurationManager configManager;
+    protected CSWaitStrategy waitStrategy;
+    protected CSScreenshotManager screenshotManager;
+
+    /**
+     * Initialize common test components before the test suite
+     */
+    @BeforeSuite(alwaysRun = true)
+    public void beforeSuite() {
+        // Initialize configuration
+        configManager = ConfigurationManager.getInstance();
+        configManager.loadConfiguration();
+        
+        // Initialize reporter
+        reporter = CSReporter.getInstance();
+        reporter.startReporting(getClass().getSimpleName());
+        
+        reporter.info("Test suite started: " + getClass().getSimpleName());
+    }
+    
+    /**
+     * Initialize driver and other components before each test method
+     * 
+     * @param method Test method
+     * @param parameters Test parameters
+     */
+    @BeforeMethod(alwaysRun = true)
+    public void beforeMethod(Method method, Object[] parameters) {
+        // Get test information
+        String testName = method.getName();
+        String testClass = getClass().getSimpleName();
+        String testDescription = "";
+        
+        // Get test description from TestNG annotation if present
+        Test testAnnotation = method.getAnnotation(Test.class);
+        if (testAnnotation != null && !testAnnotation.description().isEmpty()) {
+            testDescription = testAnnotation.description();
+        }
+        
+        // Start test reporting
+        reporter.startTest(testName, testDescription);
+        reporter.info("Starting test: " + testName);
+        
+        // Initialize driver
+        driver = DriverManager.getDriver(configManager.getBrowserType());
+        
+        // Initialize wait strategy
+        waitStrategy = new CSWaitStrategy(driver, configManager.getExplicitWaitTimeout());
+        
+        // Initialize screenshot manager
+        screenshotManager = new CSScreenshotManager(driver);
+        
+        // Initialize page objects
+        initializePageObjects();
+        
+        // Log test parameters if present
+        if (parameters != null && parameters.length > 0) {
+            reporter.info("Test parameters: " + Arrays.toString(parameters));
+        }
+    }
+    
+    /**
+     * Clean up after each test method
+     * 
+     * @param result Test result
+     */
+    @AfterMethod(alwaysRun = true)
+    public void afterMethod(ITestResult result) {
+        // Capture test status
+        String testName = result.getName();
+        
+        // Handle test result
+        switch (result.getStatus()) {
+            case ITestResult.SUCCESS:
+                reporter.pass("Test passed: " + testName);
+                break;
+            case ITestResult.FAILURE:
+                // Capture screenshot on failure
+                String screenshotPath = screenshotManager.captureScreenshot("failure_" + testName);
+                reporter.fail("Test failed: " + testName + "\nError: " + result.getThrowable().getMessage());
+                reporter.attachScreenshot(screenshotPath);
+                break;
+            case ITestResult.SKIP:
+                reporter.skip("Test skipped: " + testName);
+                if (result.getThrowable() != null) {
+                    reporter.info("Skip reason: " + result.getThrowable().getMessage());
+                }
+                break;
+            default:
+                reporter.info("Test status unknown: " + testName + " (Status: " + result.getStatus() + ")");
+        }
+        
+        // End test reporting
+        reporter.endTest();
+        
+        // Close driver
+        if (driver != null) {
+            DriverManager.quitDriver();
+            driver = null;
+        }
+    }
+    
+    /**
+     * Clean up after the test suite
+     */
+    @AfterSuite(alwaysRun = true)
+    public void afterSuite() {
+        // End reporting
+        reporter.info("Test suite completed: " + getClass().getSimpleName());
+        reporter.endReporting();
+        
+        // Cleanup any remaining resources
+        DriverManager.quitAllDrivers();
+    }
+    
+    /**
+     * Initialize page objects in the test class
+     */
+    private void initializePageObjects() {
+        try {
+            // Find all fields with CSPage type
+            Field[] fields = getClass().getDeclaredFields();
+            
+            for (Field field : fields) {
+                // Check if field is a CSBasePage subclass
+                if (CSBasePage.class.isAssignableFrom(field.getType())) {
+                    // Make field accessible
+                    field.setAccessible(true);
+                    
+                    try {
+                        // Create new instance of the page object
+                        CSBasePage pageInstance = (CSBasePage) field.getType()
+                                .getConstructor(WebDriver.class)
+                                .newInstance(driver);
+                        
+                        // Initialize elements in the page object
+                        pageInstance.initElements();
+                        
+                        // Set field value
+                        field.set(this, pageInstance);
+                        
+                        reporter.debug("Initialized page object: " + field.getName() + " (" + field.getType().getSimpleName() + ")");
+                    } catch (Exception e) {
+                        reporter.error("Failed to initialize page object: " + field.getName(), e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            reporter.error("Error initializing page objects", e);
+        }
+    }
+    
+    /**
+     * Execute a test step
+     * 
+     * @param step Test step
+     * @param description Step description
+     */
+    protected void executeStep(CSTestStep step, String description) {
+        reporter.info("Step: " + description);
+        
+        try {
+            step.execute();
+            reporter.pass("Step completed: " + description);
+        } catch (Exception e) {
+            // Capture screenshot
+            String screenshotPath = screenshotManager.captureScreenshot("step_failure");
+            
+            reporter.fail("Step failed: " + description + "\nError: " + e.getMessage());
+            reporter.attachScreenshot(screenshotPath);
+            
+            throw e; // Re-throw to fail the test
+        }
+    }
+}
+
+
+package com.cstestforge.framework.core;
+
+import com.cstestforge.framework.annotations.CSFindBy;
+import com.cstestforge.framework.config.ConfigurationManager;
+import com.cstestforge.framework.reporting.CSReporter;
+import com.cstestforge.framework.utils.CSElement;
+import com.cstestforge.framework.utils.CSWaitStrategy;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.pagefactory.DefaultElementLocatorFactory;
+import org.openqa.selenium.support.pagefactory.DefaultFieldDecorator;
+import org.openqa.selenium.support.pagefactory.ElementLocator;
+import org.openqa.selenium.support.pagefactory.ElementLocatorFactory;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+
+/**
+ * Base page class for all page objects.
+ * Implements Page Object Model pattern with enhanced element handling.
+ */
+public class CSBasePage {
+
+    protected WebDriver driver;
+    protected CSReporter reporter;
+    protected CSWaitStrategy waitStrategy;
+    protected ConfigurationManager configManager;
+    protected String pageName;
+
+    /**
+     * Constructor
+     * 
+     * @param driver WebDriver instance
+     */
+    public CSBasePage(WebDriver driver) {
+        this.driver = driver;
+        this.reporter = CSReporter.getInstance();
+        this.configManager = ConfigurationManager.getInstance();
+        this.waitStrategy = new CSWaitStrategy(driver, configManager.getExplicitWaitTimeout());
+        this.pageName = getClass().getSimpleName();
+    }
+
+    /**
+     * Initialize all elements in the page
+     */
+    public void initElements() {
+        try {
+            // Create element locator factory
+            ElementLocatorFactory factory = new DefaultElementLocatorFactory(driver);
+            
+            // Get all fields in the class
+            Class<?> clazz = this.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+
+            // Process each field
+            for (Field field : fields) {
+                // Check if field is annotated with @CSFindBy
+                if (field.isAnnotationPresent(CSFindBy.class)) {
+                    // Make field accessible
+                    field.setAccessible(true);
+                    
+                    // Get the annotation
+                    CSFindBy findBy = field.getAnnotation(CSFindBy.class);
+                    
+                    // Create element locator
+                    By by = createByFromFindBy(findBy);
+                    
+                    // Check if field is of type CSElement
+                    if (field.getType().equals(CSElement.class)) {
+                        // Create and set CSElement instance
+                        CSElement element = createCSElement(by, field.getName());
+                        field.set(this, element);
+                    } else if (WebElement.class.isAssignableFrom(field.getType())) {
+                        // Find element and set field
+                        ElementLocator locator = factory.createLocator(field);
+                        WebElement element = locator.findElement();
+                        field.set(this, element);
+                    }
+                }
+            }
+            
+            reporter.debug("Initialized page elements for: " + pageName);
+        } catch (Exception e) {
+            reporter.error("Failed to initialize page elements for: " + pageName, e);
+            throw new RuntimeException("Failed to initialize page elements", e);
+        }
+    }
+    
+    /**
+     * Create By locator from CSFindBy annotation
+     * 
+     * @param findBy CSFindBy annotation
+     * @return By locator
+     */
+    private By createByFromFindBy(CSFindBy findBy) {
+        // Check each locator type in priority order
+        if (!findBy.id().isEmpty()) {
+            return By.id(findBy.id());
+        } else if (!findBy.xpath().isEmpty()) {
+            return By.xpath(findBy.xpath());
+        } else if (!findBy.css().isEmpty()) {
+            return By.cssSelector(findBy.css());
+        } else if (!findBy.name().isEmpty()) {
+            return By.name(findBy.name());
+        } else if (!findBy.className().isEmpty()) {
+            return By.className(findBy.className());
+        } else if (!findBy.linkText().isEmpty()) {
+            return By.linkText(findBy.linkText());
+        } else if (!findBy.partialLinkText().isEmpty()) {
+            return By.partialLinkText(findBy.partialLinkText());
+        } else if (!findBy.tagName().isEmpty()) {
+            return By.tagName(findBy.tagName());
+        }
+        
+        throw new IllegalArgumentException("@CSFindBy must specify at least one locator");
+    }
+    
+    /**
+     * Create a CSElement instance
+     * 
+     * @param by By locator
+     * @param name Element name
+     * @return CSElement instance
+     */
+    private CSElement createCSElement(By by, String name) {
+        try {
+            // Create CSElement using reflection
+            Constructor<CSElement> constructor = CSElement.class.getConstructor(
+                    WebDriver.class, By.class, String.class, CSWaitStrategy.class);
+            
+            return constructor.newInstance(driver, by, name, waitStrategy);
+        } catch (Exception e) {
+            reporter.error("Failed to create CSElement: " + name, e);
+            throw new RuntimeException("Failed to create CSElement", e);
+        }
+    }
+    
+    /**
+     * Navigate to a URL
+     * 
+     * @param url URL to navigate to
+     */
+    public void navigateTo(String url) {
+        reporter.info("Navigating to: " + url);
+        driver.get(url);
+        waitStrategy.waitForPageLoad();
+    }
+    
+    /**
+     * Check if page is loaded
+     * 
+     * @return true if page is loaded
+     */
+    public boolean isPageLoaded() {
+        // Check page readiness
+        return waitStrategy.isPageLoaded();
+    }
+    
+    /**
+     * Get page title
+     * 
+     * @return Page title
+     */
+    public String getPageTitle() {
+        return driver.getTitle();
+    }
+    
+    /**
+     * Get current URL
+     * 
+     * @return Current URL
+     */
+    public String getCurrentUrl() {
+        return driver.getCurrentUrl();
+    }
+    
+    /**
+     * Refresh page
+     */
+    public void refreshPage() {
+        reporter.info("Refreshing page: " + pageName);
+        driver.navigate().refresh();
+        waitStrategy.waitForPageLoad();
+    }
+    
+    /**
+     * Go back to previous page
+     */
+    public void goBack() {
+        reporter.info("Navigating back from: " + pageName);
+        driver.navigate().back();
+        waitStrategy.waitForPageLoad();
+    }
+    
+    /**
+     * Go forward to next page
+     */
+    public void goForward() {
+        reporter.info("Navigating forward from: " + pageName);
+        driver.navigate().forward();
+        waitStrategy.waitForPageLoad();
+    }
+    
+    /**
+     * Execute JavaScript
+     * 
+     * @param script JavaScript to execute
+     * @param args Script arguments
+     * @return Script result
+     */
+    protected Object executeJs(String script, Object... args) {
+        try {
+            reporter.debug("Executing JavaScript: " + script);
+            return ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(script, args);
+        } catch (Exception e) {
+            reporter.error("Failed to execute JavaScript", e);
+            throw e;
+        }
+    }
+}
+
+
+package com.cstestforge.framework.reporting;
+
+import com.cstestforge.framework.config.ConfigurationManager;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.WebDriver;
+
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Custom reporting engine for CSTestForge.
+ * Generates detailed HTML reports with screenshots and metrics.
+ * Designed to work without third-party dependencies.
+ */
+public class CSReporter {
+
+    private static CSReporter instance;
+    private static final Object LOCK = new Object();
+    
+    private final Map<Long, TestData> testDataMap = new ConcurrentHashMap<>();
+    private final List<TestData> completedTests = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, AtomicInteger> testStatusCounts = new ConcurrentHashMap<>();
+    
+    private String reportDir;
+    private String currentSuiteName;
+    private long suiteStartTime;
+    private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    private final SimpleDateFormat fileNameDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss");
+    private LogLevel logLevel = LogLevel.INFO;
+    
+    /**
+     * Available log levels
+     */
+    public enum LogLevel {
+        DEBUG(0, "#6c757d"),
+        INFO(1, "#0d6efd"),
+        WARN(2, "#ffc107"),
+        ERROR(3, "#dc3545"),
+        PASS(4, "#198754"),
+        FAIL(5, "#dc3545"),
+        SKIP(6, "#6c757d");
+        
+        private final int level;
+        private final String color;
+        
+        LogLevel(int level, String color) {
+            this.level = level;
+            this.color = color;
+        }
+        
+        public int getLevel() {
+            return level;
+        }
+        
+        public String getColor() {
+            return color;
+        }
+    }
+    
+    /**
+     * Inner class to store test data
+     */
+    private static class TestData {
+        private final String testName;
+        private final String testDescription;
+        private final long threadId;
+        private final long startTime;
+        private long endTime;
+        private List<LogEntry> logs = Collections.synchronizedList(new ArrayList<>());
+        private List<String> screenshots = Collections.synchronizedList(new ArrayList<>());
+        private LogLevel status = LogLevel.INFO;
+        
+        public TestData(String testName, String testDescription, long threadId, long startTime) {
+            this.testName = testName;
+            this.testDescription = testDescription;
+            this.threadId = threadId;
+            this.startTime = startTime;
+        }
+    }
+    
+    /**
+     * Inner class to store log entries
+     */
+    private static class LogEntry {
+        private final long timestamp;
+        private final LogLevel level;
+        private final String message;
+        private final String stackTrace;
+        
+        public LogEntry(long timestamp, LogLevel level, String message, String stackTrace) {
+            this.timestamp = timestamp;
+            this.level = level;
+            this.message = message;
+            this.stackTrace = stackTrace;
+        }
+    }
+    
+    /**
+     * Private constructor to enforce singleton pattern
+     */
+    private CSReporter() {
+        // Initialize status counts
+        Arrays.stream(LogLevel.values())
+              .forEach(level -> testStatusCounts.put(level.name(), new AtomicInteger(0)));
+        
+        // Get log level from configuration
+        try {
+            ConfigurationManager configManager = ConfigurationManager.getInstance();
+            String configLogLevel = configManager.getLogLevel();
+            
+            if (configLogLevel != null && !configLogLevel.isEmpty()) {
+                this.logLevel = LogLevel.valueOf(configLogLevel.toUpperCase());
+            }
+        } catch (Exception e) {
+            System.err.println("Error getting log level from configuration: " + e.getMessage());
+        }
+        
+        // Create report directory
+        createReportDirectory();
+    }
+    
+    /**
+     * Get singleton instance
+     * 
+     * @return CSReporter instance
+     */
+    public static CSReporter getInstance() {
+        if (instance == null) {
+            synchronized (LOCK) {
+                if (instance == null) {
+                    instance = new CSReporter();
+                }
+            }
+        }
+        
+        return instance;
+    }
+    
+    /**
+     * Create report directory
+     */
+    private void createReportDirectory() {
+        try {
+            // Create base report directory
+            String timestamp = fileNameDateFormat.format(new Date());
+            reportDir = "reports/cstestforge_" + timestamp;
+            
+            Path reportPath = Paths.get(reportDir);
+            Files.createDirectories(reportPath);
+            
+            // Create screenshots directory
+            Path screenshotsPath = Paths.get(reportDir, "screenshots");
+            Files.createDirectories(screenshotsPath);
+            
+            // Copy assets
+            copyReportAssets();
+        } catch (Exception e) {
+            System.err.println("Error creating report directory: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Copy report assets (CSS, JS, etc.)
+     */
+    private void copyReportAssets() {
+        try {
+            // Create assets directory
+            Path assetsPath = Paths.get(reportDir, "assets");
+            Files.createDirectories(assetsPath);
+            
+            // Create CSS file
+            String cssContent = generateCss();
+            Files.write(Paths.get(assetsPath.toString(), "report.css"), cssContent.getBytes());
+            
+            // Create JS file
+            String jsContent = generateJs();
+            Files.write(Paths.get(assetsPath.toString(), "report.js"), jsContent.getBytes());
+        } catch (Exception e) {
+            System.err.println("Error copying report assets: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Start reporting for a test suite
+     * 
+     * @param suiteName Test suite name
+     */
+    public void startReporting(String suiteName) {
+        this.currentSuiteName = suiteName;
+        this.suiteStartTime = System.currentTimeMillis();
+    }
+    
+    /**
+     * End reporting and generate final report
+     */
+    public void endReporting() {
+        try {
+            // Generate main report file
+            String reportContent = generateHtmlReport();
+            Files.write(Paths.get(reportDir, "index.html"), reportContent.getBytes());
+            
+            System.out.println("Report generated: " + Paths.get(reportDir, "index.html").toAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("Error generating report: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Start a new test
+     * 
+     * @param testName Test name
+     * @param testDescription Test description
+     */
+    public void startTest(String testName, String testDescription) {
+        long threadId = Thread.currentThread().getId();
+        TestData testData = new TestData(testName, testDescription, threadId, System.currentTimeMillis());
+        testDataMap.put(threadId, testData);
+        
+        // Log test start
+        log(LogLevel.INFO, "Test started: " + testName);
+    }
+    
+    /**
+     * End the current test
+     */
+    public void endTest() {
+        long threadId = Thread.currentThread().getId();
+        TestData testData = testDataMap.get(threadId);
+        
+        if (testData != null) {
+            testData.endTime = System.currentTimeMillis();
+            
+            // Update test status count
+            testStatusCounts.get(testData.status.name()).incrementAndGet();
+            
+            // Move to completed tests
+            completedTests.add(testData);
+            testDataMap.remove(threadId);
+            
+            // Log test end
+            log(LogLevel.INFO, "Test ended: " + testData.testName + " - Duration: " + 
+                   formatDuration(testData.endTime - testData.startTime) + 
+                   " - Status: " + testData.status);
+        }
+    }
+    
+    /**
+     * Log a debug message
+     * 
+     * @param message Message to log
+     */
+    public void debug(String message) {
+        log(LogLevel.DEBUG, message);
+    }
+    
+    /**
+     * Log an info message
+     * 
+     * @param message Message to log
+     */
+    public void info(String message) {
+        log(LogLevel.INFO, message);
+    }
+    
+    /**
+     * Log a warning message
+     * 
+     * @param message Message to log
+     */
+    public void warn(String message) {
+        log(LogLevel.WARN, message);
+    }
+    
+    /**
+     * Log an error message
+     * 
+     * @param message Message to log
+     * @param exception Exception (optional)
+     */
+    public void error(String message, Throwable exception) {
+        String stackTrace = exception != null ? getStackTrace(exception) : null;
+        log(LogLevel.ERROR, message, stackTrace);
+    }
+    
+    /**
+     * Log a pass message
+     * 
+     * @param message Message to log
+     */
+    public void pass(String message) {
+        log(LogLevel.PASS, message);
+        
+        // Update test status if higher priority
+        long threadId = Thread.currentThread().getId();
+        TestData testData = testDataMap.get(threadId);
+        
+        if (testData != null && LogLevel.PASS.getLevel() > testData.status.getLevel()) {
+            testData.status = LogLevel.PASS;
+        }
+    }
+    
+    /**
+     * Log a fail message
+     * 
+     * @param message Message to log
+     */
+    public void fail(String message) {
+        log(LogLevel.FAIL, message);
+        
+        // Update test status
+        long threadId = Thread.currentThread().getId();
+        TestData testData = testDataMap.get(threadId);
+        
+        if (testData != null) {
+            testData.status = LogLevel.FAIL;
+        }
+    }
+    
+    /**
+     * Log a skip message
+     * 
+     * @param message Message to log
+     */
+    public void skip(String message) {
+        log(LogLevel.SKIP, message);
+        
+        // Update test status
+        long threadId = Thread.currentThread().getId();
+        TestData testData = testDataMap.get(threadId);
+        
+        if (testData != null) {
+            testData.status = LogLevel.SKIP;
+        }
+    }
+    
+    /**
+     * Log a message with specified level
+     * 
+     * @param level Log level
+     * @param message Message to log
+     */
+    private void log(LogLevel level, String message) {
+        log(level, message, null);
+    }
+    
+    /**
+     * Log a message with specified level and stack trace
+     * 
+     * @param level Log level
+     * @param message Message to log
+     * @param stackTrace Stack trace (optional)
+     */
+    private void log(LogLevel level, String message, String stackTrace) {
+        // Only log if level is greater than or equal to configured level
+        if (level.getLevel() >= this.logLevel.getLevel()) {
+            System.out.println("[" + level + "] " + message);
+            
+            // Add to test logs
+            long threadId = Thread.currentThread().getId();
+            TestData testData = testDataMap.get(threadId);
+            
+            if (testData != null) {
+                LogEntry logEntry = new LogEntry(System.currentTimeMillis(), level, message, stackTrace);
+                testData.logs.add(logEntry);
+            }
+        }
+    }
+    
+    /**
+     * Get stack trace as string
+     * 
+     * @param throwable Throwable
+     * @return Stack trace string
+     */
+    private String getStackTrace(Throwable throwable) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
+    }
+    
+    /**
+     * Attach a screenshot to the current test
+     * 
+     * @param screenshotPath Path to screenshot
+     */
+    public void attachScreenshot(String screenshotPath) {
+        if (screenshotPath != null && !screenshotPath.isEmpty()) {
+            long threadId = Thread.currentThread().getId();
+            TestData testData = testDataMap.get(threadId);
+            
+            if (testData != null) {
+                testData.screenshots.add(screenshotPath);
+                log(LogLevel.INFO, "Screenshot captured: " + screenshotPath);
+            }
+        }
+    }
+    
+    /**
+     * Generate HTML report
+     * 
+     * @return HTML report content
+     */
+    private String generateHtmlReport() {
+        StringBuilder html = new StringBuilder();
+        
+        // HTML header
+        html.append("<!DOCTYPE html>\n")
+            .append("<html lang=\"en\">\n")
+            .append("<head>\n")
+            .append("    <meta charset=\"UTF-8\">\n")
+            .append("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+            .append("    <title>CSTestForge Report - ").append(currentSuiteName).append("</title>\n")
+            .append("    <link rel=\"stylesheet\" href=\"assets/report.css\">\n")
+            .append("</head>\n")
+            .append("<body>\n");
+        
+        // Header section
+        html.append("    <header>\n")
+            .append("        <div class=\"logo\">CSTestForge</div>\n")
+            .append("        <h1>Test Execution Report</h1>\n")
+            .append("        <div class=\"suite-info\">").append(currentSuiteName).append("</div>\n")
+            .append("    </header>\n");
+        
+        // Summary section
+        html.append("    <section class=\"summary\">\n")
+            .append("        <h2>Test Summary</h2>\n")
+            .append("        <div class=\"summary-grid\">\n")
+            .append("            <div class=\"summary-card\">\n")
+            .append("                <div class=\"summary-title\">Total Tests</div>\n")
+            .append("                <div class=\"summary-value\">").append(completedTests.size()).append("</div>\n")
+            .append("            </div>\n")
+            .append("            <div class=\"summary-card\">\n")
+            .append("                <div class=\"summary-title\">Passed</div>\n")
+            .append("                <div class=\"summary-value passed\">").append(testStatusCounts.get(LogLevel.PASS.name()).get()).append("</div>\n")
+            .append("            </div>\n")
+            .append("            <div class=\"summary-card\">\n")
+            .append("                <div class=\"summary-title\">Failed</div>\n")
+            .append("                <div class=\"summary-value failed\">").append(testStatusCounts.get(LogLevel.FAIL.name()).get()).append("</div>\n")
+            .append("            </div>\n")
+            .append("            <div class=\"summary-card\">\n")
+            .append("                <div class=\"summary-title\">Skipped</div>\n")
+            .append("                <div class=\"summary-value skipped\">").append(testStatusCounts.get(LogLevel.SKIP.name()).get()).append("</div>\n")
+            .append("            </div>\n")
+            .append("        </div>\n");
+        
+        // Add execution time
+        long executionTime = System.currentTimeMillis() - suiteStartTime;
+        html.append("        <div class=\"execution-info\">\n")
+            .append("            <div><strong>Start Time:</strong> ").append(dateFormat.format(new Date(suiteStartTime))).append("</div>\n")
+            .append("            <div><strong>End Time:</strong> ").append(dateFormat.format(new Date())).append("</div>\n")
+            .append("            <div><strong>Duration:</strong> ").append(formatDuration(executionTime)).append("</div>\n")
+            .append("        </div>\n");
+            
+        // Add execution chart
+        html.append("        <div class=\"chart-container\">\n")
+            .append("            <canvas id=\"testResultChart\"></canvas>\n")
+            .append("        </div>\n")
+            .append("    </section>\n");
+        
+        // Test details section
+        html.append("    <section class=\"test-details\">\n")
+            .append("        <h2>Test Details</h2>\n")
+            .append("        <div class=\"test-filters\">\n")
+            .append("            <button class=\"filter-btn active\" data-filter=\"all\">All Tests</button>\n")
+            .append("            <button class=\"filter-btn\" data-filter=\"pass\">Passed</button>\n")
+            .append("            <button class=\"filter-btn\" data-filter=\"fail\">Failed</button>\n")
+            .append("            <button class=\"filter-btn\" data-filter=\"skip\">Skipped</button>\n")
+            .append("        </div>\n")
+            .append("        <div class=\"test-list\">\n");
+        
+        // Add tests
+        for (TestData test : completedTests) {
+            String statusClass = test.status.name().toLowerCase();
+            
+            html.append("            <div class=\"test-item ").append(statusClass).append("\">\n")
+                .append("                <div class=\"test-header\" onclick=\"toggleTestLogs(this)\">\n")
+                .append("                    <div class=\"test-name\">").append(test.testName).append("</div>\n")
+                .append("                    <div class=\"test-status ").append(statusClass).append("\">").append(test.status.name()).append("</div>\n")
+                .append("                    <div class=\"test-time\">").append(formatDuration(test.endTime - test.startTime)).append("</div>\n")
+                .append("                    <div class=\"test-toggle\">+</div>\n")
+                .append("                </div>\n")
+                .append("                <div class=\"test-content\">\n");
+            
+            // Add test description
+            if (test.testDescription != null && !test.testDescription.isEmpty()) {
+                html.append("                    <div class=\"test-description\">").append(test.testDescription).append("</div>\n");
+            }
+            
+            // Add logs
+            html.append("                    <div class=\"test-logs\">\n");
+            
+            for (LogEntry log : test.logs) {
+                String logClass = log.level.name().toLowerCase();
+                
+                html.append("                        <div class=\"log-entry ").append(logClass).append("\">\n")
+                    .append("                            <div class=\"log-time\">").append(dateFormat.format(new Date(log.timestamp))).append("</div>\n")
+                    .append("                            <div class=\"log-level\">").append(log.level.name()).append("</div>\n")
+                    .append("                            <div class=\"log-message\">").append(escapeHtml(log.message)).append("</div>\n");
+                
+                // Add stack trace if present
+                if (log.stackTrace != null && !log.stackTrace.isEmpty()) {
+                    html.append("                            <div class=\"log-stack-trace\">\n")
+                        .append("                                <pre>").append(escapeHtml(log.stackTrace)).append("</pre>\n")
+                        .append("                            </div>\n");
+                }
+                
+                html.append("                        </div>\n");
+            }
+            
+            html.append("                    </div>\n");
+            
+            // Add screenshots
+            if (!test.screenshots.isEmpty()) {
+                html.append("                    <div class=\"test-screenshots\">\n")
+                    .append("                        <h4>Screenshots:</h4>\n");
+                
+                for (String screenshot : test.screenshots) {
+                    String screenshotPath = screenshot.replace(reportDir + "/", "");
+                    html.append("                        <div class=\"screenshot\">\n")
+                        .append("                            <a href=\"").append(screenshotPath).append("\" target=\"_blank\">\n")
+                        .append("                                <img src=\"").append(screenshotPath).append("\" alt=\"Screenshot\">\n")
+                        .append("                            </a>\n")
+                        .append("                        </div>\n");
+                }
+                
+                html.append("                    </div>\n");
+            }
+            
+            html.append("                </div>\n")
+                .append("            </div>\n");
+        }
+        
+        html.append("        </div>\n")
+            .append("    </section>\n");
+        
+        // Footer
+        html.append("    <footer>\n")
+            .append("        <div>Generated by CSTestForge on ").append(dateFormat.format(new Date())).append("</div>\n")
+            .append("    </footer>\n");
+        
+        // JavaScript
+        html.append("    <script src=\"assets/report.js\"></script>\n")
+            .append("    <script>\n")
+            .append("        // Initialize charts\n")
+            .append("        const testData = {\n")
+            .append("            passed: ").append(testStatusCounts.get(LogLevel.PASS.name()).get()).append(",\n")
+            .append("            failed: ").append(testStatusCounts.get(LogLevel.FAIL.name()).get()).append(",\n")
+            .append("            skipped: ").append(testStatusCounts.get(LogLevel.SKIP.name()).get()).append("\n")
+            .append("        };\n")
+            .append("        initializeCharts(testData);\n")
+            .append("    </script>\n");
+        
+        // Close HTML
+        html.append("</body>\n")
+            .append("</html>");
+        
+        return html.toString();
+    }
+    
+    /**
+     * Generate CSS content for the report
+     * 
+     * @return CSS content
+     */
+    private String generateCss() {
+        return "/* CSTestForge Report Styles */\n" +
+               "* {\n" +
+               "    box-sizing: border-box;\n" +
+               "    margin: 0;\n" +
+               "    padding: 0;\n" +
+               "}\n" +
+               "\n" +
+               "body {\n" +
+               "    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n" +
+               "    line-height: 1.6;\n" +
+               "    color: #333;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "}\n" +
+               "\n" +
+               "header {\n" +
+               "    background-color: #343a40;\n" +
+               "    color: #fff;\n" +
+               "    padding: 1rem 2rem;\n" +
+               "    display: flex;\n" +
+               "    justify-content: space-between;\n" +
+               "    align-items: center;\n" +
+               "    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n" +
+               "}\n" +
+               "\n" +
+               ".logo {\n" +
+               "    font-weight: bold;\n" +
+               "    font-size: 1.5rem;\n" +
+               "}\n" +
+               "\n" +
+               "h1 {\n" +
+               "    font-size: 1.5rem;\n" +
+               "    font-weight: 400;\n" +
+               "}\n" +
+               "\n" +
+               "h2 {\n" +
+               "    font-size: 1.25rem;\n" +
+               "    margin-bottom: 1rem;\n" +
+               "    color: #343a40;\n" +
+               "    border-bottom: 1px solid #dee2e6;\n" +
+               "    padding-bottom: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               "section {\n" +
+               "    padding: 2rem;\n" +
+               "    background-color: #fff;\n" +
+               "    margin: 1rem;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);\n" +
+               "}\n" +
+               "\n" +
+               ".summary-grid {\n" +
+               "    display: grid;\n" +
+               "    grid-template-columns: repeat(4, 1fr);\n" +
+               "    gap: 1rem;\n" +
+               "    margin-bottom: 1rem;\n" +
+               "}\n" +
+               "\n" +
+               ".summary-card {\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    padding: 1rem;\n" +
+               "    text-align: center;\n" +
+               "    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);\n" +
+               "}\n" +
+               "\n" +
+               ".summary-title {\n" +
+               "    font-size: 1rem;\n" +
+               "    color: #6c757d;\n" +
+               "    margin-bottom: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               ".summary-value {\n" +
+               "    font-size: 2rem;\n" +
+               "    font-weight: bold;\n" +
+               "}\n" +
+               "\n" +
+               ".passed {\n" +
+               "    color: #198754;\n" +
+               "}\n" +
+               "\n" +
+               ".failed {\n" +
+               "    color: #dc3545;\n" +
+               "}\n" +
+               "\n" +
+               ".skipped {\n" +
+               "    color: #6c757d;\n" +
+               "}\n" +
+               "\n" +
+               ".execution-info {\n" +
+               "    display: flex;\n" +
+               "    justify-content: space-between;\n" +
+               "    margin-top: 1rem;\n" +
+               "    padding: 1rem;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "}\n" +
+               "\n" +
+               ".chart-container {\n" +
+               "    height: 300px;\n" +
+               "    margin-top: 2rem;\n" +
+               "}\n" +
+               "\n" +
+               ".test-filters {\n" +
+               "    display: flex;\n" +
+               "    gap: 0.5rem;\n" +
+               "    margin-bottom: 1rem;\n" +
+               "}\n" +
+               "\n" +
+               ".filter-btn {\n" +
+               "    padding: 0.5rem 1rem;\n" +
+               "    border: 1px solid #dee2e6;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    cursor: pointer;\n" +
+               "    transition: all 0.2s;\n" +
+               "}\n" +
+               "\n" +
+               ".filter-btn.active {\n" +
+               "    background-color: #0d6efd;\n" +
+               "    color: #fff;\n" +
+               "    border-color: #0d6efd;\n" +
+               "}\n" +
+               "\n" +
+               ".test-item {\n" +
+               "    margin-bottom: 1rem;\n" +
+               "    border: 1px solid #dee2e6;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    overflow: hidden;\n" +
+               "}\n" +
+               "\n" +
+               ".test-header {\n" +
+               "    display: grid;\n" +
+               "    grid-template-columns: 1fr auto auto auto;\n" +
+               "    padding: 0.75rem 1rem;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    cursor: pointer;\n" +
+               "    align-items: center;\n" +
+               "}\n" +
+               "\n" +
+               ".test-name {\n" +
+               "    font-weight: 500;\n" +
+               "}\n" +
+               "\n" +
+               ".test-status {\n" +
+               "    padding: 0.25rem 0.5rem;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    font-size: 0.875rem;\n" +
+               "    font-weight: 500;\n" +
+               "    color: #fff;\n" +
+               "    text-align: center;\n" +
+               "    width: 70px;\n" +
+               "}\n" +
+               "\n" +
+               ".test-status.pass {\n" +
+               "    background-color: #198754;\n" +
+               "}\n" +
+               "\n" +
+               ".test-status.fail {\n" +
+               "    background-color: #dc3545;\n" +
+               "}\n" +
+               "\n" +
+               ".test-status.skip {\n" +
+               "    background-color: #6c757d;\n" +
+               "}\n" +
+               "\n" +
+               ".test-time {\n" +
+               "    color: #6c757d;\n" +
+               "    margin: 0 1rem;\n" +
+               "    font-size: 0.875rem;\n" +
+               "}\n" +
+               "\n" +
+               ".test-toggle {\n" +
+               "    font-weight: bold;\n" +
+               "    font-size: 1.25rem;\n" +
+               "    margin-left: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               ".test-content {\n" +
+               "    display: none;\n" +
+               "    padding: 1rem;\n" +
+               "    background-color: #fff;\n" +
+               "    border-top: 1px solid #dee2e6;\n" +
+               "}\n" +
+               "\n" +
+               ".test-description {\n" +
+               "    margin-bottom: 1rem;\n" +
+               "    padding: 0.5rem;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "}\n" +
+               "\n" +
+               ".test-logs {\n" +
+               "    margin-bottom: 1rem;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry {\n" +
+               "    padding: 0.5rem;\n" +
+               "    margin-bottom: 0.5rem;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    border-left: 3px solid #ccc;\n" +
+               "    display: grid;\n" +
+               "    grid-template-columns: auto auto 1fr;\n" +
+               "    gap: 1rem;\n" +
+               "    align-items: start;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.debug {\n" +
+               "    border-left-color: #6c757d;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.info {\n" +
+               "    border-left-color: #0d6efd;\n" +
+               "    background-color: #f0f7ff;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.warn {\n" +
+               "    border-left-color: #ffc107;\n" +
+               "    background-color: #fff8e6;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.error, .log-entry.fail {\n" +
+               "    border-left-color: #dc3545;\n" +
+               "    background-color: #fff0f0;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.pass {\n" +
+               "    border-left-color: #198754;\n" +
+               "    background-color: #f0fff5;\n" +
+               "}\n" +
+               "\n" +
+               ".log-entry.skip {\n" +
+               "    border-left-color: #6c757d;\n" +
+               "    background-color: #f8f9fa;\n" +
+               "}\n" +
+               "\n" +
+               ".log-time {\n" +
+               "    font-size: 0.875rem;\n" +
+               "    color: #6c757d;\n" +
+               "    white-space: nowrap;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level {\n" +
+               "    font-size: 0.875rem;\n" +
+               "    font-weight: 500;\n" +
+               "    white-space: nowrap;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.debug {\n" +
+               "    color: #6c757d;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.info {\n" +
+               "    color: #0d6efd;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.warn {\n" +
+               "    color: #ffc107;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.error, .log-level.fail {\n" +
+               "    color: #dc3545;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.pass {\n" +
+               "    color: #198754;\n" +
+               "}\n" +
+               "\n" +
+               ".log-level.skip {\n" +
+               "    color: #6c757d;\n" +
+               "}\n" +
+               "\n" +
+               ".log-message {\n" +
+               "    word-break: break-word;\n" +
+               "}\n" +
+               "\n" +
+               ".log-stack-trace {\n" +
+               "    grid-column: 1 / span 3;\n" +
+               "    margin-top: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               ".log-stack-trace pre {\n" +
+               "    background-color: #f8f9fa;\n" +
+               "    padding: 0.5rem;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    font-size: 0.875rem;\n" +
+               "    overflow-x: auto;\n" +
+               "    white-space: pre-wrap;\n" +
+               "}\n" +
+               "\n" +
+               ".test-screenshots {\n" +
+               "    margin-top: 1rem;\n" +
+               "}\n" +
+               "\n" +
+               ".test-screenshots h4 {\n" +
+               "    margin-bottom: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               ".screenshot {\n" +
+               "    margin-bottom: 0.5rem;\n" +
+               "    display: inline-block;\n" +
+               "    margin-right: 0.5rem;\n" +
+               "}\n" +
+               "\n" +
+               ".screenshot img {\n" +
+               "    max-width: 300px;\n" +
+               "    border: 1px solid #dee2e6;\n" +
+               "    border-radius: 0.25rem;\n" +
+               "    transition: all 0.2s;\n" +
+               "}\n" +
+               "\n" +
+               ".screenshot img:hover {\n" +
+               "    transform: scale(1.05);\n" +
+               "    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);\n" +
+               "}\n" +
+               "\n" +
+               "footer {\n" +
+               "    text-align: center;\n" +
+               "    padding: 1rem;\n" +
+               "    color: #6c757d;\n" +
+               "    font-size: 0.875rem;\n" +
+               "    margin-top: 2rem;\n" +
+               "}\n" +
+               "\n" +
+               "@media (max-width: 768px) {\n" +
+               "    .summary-grid {\n" +
+               "        grid-template-columns: repeat(2, 1fr);\n" +
+               "    }\n" +
+               "    \n" +
+               "    .execution-info {\n" +
+               "        flex-direction: column;\n" +
+               "        gap: 0.5rem;\n" +
+               "    }\n" +
+               "    \n" +
+               "    .test-header {\n" +
+               "        grid-template-columns: 1fr auto auto;\n" +
+               "    }\n" +
+               "    \n" +
+               "    .test-time {\n" +
+               "        display: none;\n" +
+               "    }\n" +
+               "}\n";
+    }
+    
+    /**
+     * Generate JavaScript content for the report
+     * 
+     * @return JavaScript content
+     */
+    private String generateJs() {
+        return "// CSTestForge Report Scripts\n" +
+               "function toggleTestLogs(header) {\n" +
+               "    const content = header.nextElementSibling;\n" +
+               "    const toggle = header.querySelector('.test-toggle');\n" +
+               "    \n" +
+               "    if (content.style.display === 'block') {\n" +
+               "        content.style.display = 'none';\n" +
+               "        toggle.textContent = '+';\n" +
+               "    } else {\n" +
+               "        content.style.display = 'block';\n" +
+               "        toggle.textContent = '-';\n" +
+               "    }\n" +
+               "}\n" +
+               "\n" +
+               "function filterTests(filter) {\n" +
+               "    const testItems = document.querySelectorAll('.test-item');\n" +
+               "    \n" +
+               "    testItems.forEach(item => {\n" +
+               "        if (filter === 'all' || item.classList.contains(filter)) {\n" +
+               "            item.style.display = 'block';\n" +
+               "        } else {\n" +
+               "            item.style.display = 'none';\n" +
+               "        }\n" +
+               "    });\n" +
+               "}\n" +
+               "\n" +
+               "function initializeCharts(testData) {\n" +
+               "    // Create test results chart\n" +
+               "    const ctx = document.getElementById('testResultChart').getContext('2d');\n" +
+               "    \n" +
+               "    // Define colors\n" +
+               "    const colors = {\n" +
+               "        passed: '#198754',\n" +
+               "        failed: '#dc3545',\n" +
+               "        skipped: '#6c757d'\n" +
+               "    };\n" +
+               "    \n" +
+               "    // Create chart data\n" +
+               "    const data = {\n" +
+               "        labels: ['Passed', 'Failed', 'Skipped'],\n" +
+               "        datasets: [{\n" +
+               "            data: [testData.passed, testData.failed, testData.skipped],\n" +
+               "            backgroundColor: [colors.passed, colors.failed, colors.skipped],\n" +
+               "            borderColor: '#fff',\n" +
+               "            borderWidth: 2\n" +
+               "        }]\n" +
+               "    };\n" +
+               "    \n" +
+               "    // Chart options\n" +
+               "    const options = {\n" +
+               "        responsive: true,\n" +
+               "        maintainAspectRatio: false,\n" +
+               "        plugins: {\n" +
+               "            legend: {\n" +
+               "                position: 'right',\n" +
+               "                labels: {\n" +
+               "                    font: {\n" +
+               "                        family: '\"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif'\n" +
+               "                    }\n" +
+               "                }\n" +
+               "            },\n" +
+               "            tooltip: {\n" +
+               "                callbacks: {\n" +
+               "                    label: function(context) {\n" +
+               "                        return context.label + ': ' + context.raw + ' tests';\n" +
+               "                    }\n" +
+               "                }\n" +
+               "            }\n" +
+               "        }\n" +
+               "    };\n" +
+               "    \n" +
+               "    // Create chart\n" +
+               "    customDrawChart(ctx, data, options);\n" +
+               "}\n" +
+               "\n" +
+               "function customDrawChart(ctx, data, options) {\n" +
+               "    // A simple custom chart implementation using canvas API\n" +
+               "    const canvas = ctx.canvas;\n" +
+               "    const width = canvas.width;\n" +
+               "    const height = canvas.height;\n" +
+               "    \n" +
+               "    // Clear canvas\n" +
+               "    ctx.clearRect(0, 0, width, height);\n" +
+               "    \n" +
+               "    // Calculate total\n" +
+               "    const total = data.datasets[0].data.reduce((sum, value) => sum + value, 0);\n" +
+               "    \n" +
+               "    // Draw pie chart\n" +
+               "    if (total > 0) {\n" +
+               "        // Set chart dimensions\n" +
+               "        const centerX = width / 3;\n" +
+               "        const centerY = height / 2;\n" +
+               "        const radius = Math.min(width, height) / 3;\n" +
+               "        \n" +
+               "        let startAngle = 0;\n" +
+               "        let endAngle = 0;\n" +
+               "        \n" +
+               "        // Draw slices\n" +
+               "        for (let i = 0; i < data.datasets[0].data.length; i++) {\n" +
+               "            const value = data.datasets[0].data[i];\n" +
+               "            const sliceAngle = (value / total) * 2 * Math.PI;\n" +
+               "            \n" +
+               "            endAngle = startAngle + sliceAngle;\n" +
+               "            \n" +
+               "            ctx.beginPath();\n" +
+               "            ctx.moveTo(centerX, centerY);\n" +
+               "            ctx.arc(centerX, centerY, radius, startAngle, endAngle);\n" +
+               "            ctx.closePath();\n" +
+               "            \n" +
+               "            ctx.fillStyle = data.datasets[0].backgroundColor[i];\n" +
+               "            ctx.fill();\n" +
+               "            \n" +
+               "            ctx.lineWidth = 2;\n" +
+               "            ctx.strokeStyle = '#fff';\n" +
+               "            ctx.stroke();\n" +
+               "            \n" +
+               "            startAngle = endAngle;\n" +
+               "        }\n" +
+               "        \n" +
+               "        // Draw legend\n" +
+               "        const legendX = width * 2 / 3;\n" +
+               "        const legendY = height / 4;\n" +
+               "        const itemHeight = 30;\n" +
+               "        \n" +
+               "        for (let i = 0; i < data.labels.length; i++) {\n" +
+               "            const y = legendY + i * itemHeight;\n" +
+               "            \n" +
+               "            // Draw color box\n" +
+               "            ctx.fillStyle = data.datasets[0].backgroundColor[i];\n" +
+               "            ctx.fillRect(legendX, y, 20, 20);\n" +
+               "            \n" +
+               "            ctx.strokeStyle = '#fff';\n" +
+               "            ctx.lineWidth = 1;\n" +
+               "            ctx.strokeRect(legendX, y, 20, 20);\n" +
+               "            \n" +
+               "            // Draw label\n" +
+               "            ctx.fillStyle = '#333';\n" +
+               "            ctx.font = '14px \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif';\n" +
+               "            ctx.textAlign = 'left';\n" +
+               "            ctx.textBaseline = 'middle';\n" +
+               "            ctx.fillText(data.labels[i] + ': ' + data.datasets[0].data[i], legendX + 30, y + 10);\n" +
+               "        }\n" +
+               "    } else {\n" +
+               "        // Draw message when no data\n" +
+               "        ctx.fillStyle = '#6c757d';\n" +
+               "        ctx.font = '16px \"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif';\n" +
+               "        ctx.textAlign = 'center';\n" +
+               "        ctx.textBaseline = 'middle';\n" +
+               "        ctx.fillText('No test data available', width / 2, height / 2);\n" +
+               "    }\n" +
+               "}\n" +
+               "\n" +
+               "// Initialize event listeners\n" +
+               "document.addEventListener('DOMContentLoaded', function() {\n" +
+               "    // Filter buttons\n" +
+               "    const filterButtons = document.querySelectorAll('.filter-btn');\n" +
+               "    \n" +
+               "    filterButtons.forEach(button => {\n" +
+               "        button.addEventListener('click', function() {\n" +
+               "            // Remove active class from all buttons\n" +
+               "            filterButtons.forEach(btn => btn.classList.remove('active'));\n" +
+               "            \n" +
+               "            // Add active class to clicked button\n" +
+               "            this.classList.add('active');\n" +
+               "            \n" +
+               "            // Filter tests\n" +
+               "            filterTests(this.getAttribute('data-filter'));\n" +
+               "        });\n" +
+               "    });\n" +
+               "});\n";
+    }
+    
+    /**
+     * Format duration in milliseconds to human-readable string
+     * 
+     * @param durationMs Duration in milliseconds
+     * @return Formatted duration string
+     */
+    private String formatDuration(long durationMs) {
+        long seconds = durationMs / 1000;
+        long minutes = seconds / 60;
+        long hours = minutes / 60;
+        
+        seconds %= 60;
+        minutes %= 60;
+        
+        StringBuilder formatted = new StringBuilder();
+        
+        if (hours > 0) {
+            formatted.append(hours).append("h ");
+        }
+        
+        if (minutes > 0 || hours > 0) {
+            formatted.append(minutes).append("m ");
+        }
+        
+        formatted.append(seconds).append("s");
+        
+        return formatted.toString();
+    }
+    
+    /**
+     * Escape HTML special characters
+     * 
+     * @param input Input string
+     * @return Escaped string
+     */
+    private String escapeHtml(String input) {
+        if (input == null) {
+            return "";
+        }
+        
+        return input.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+                   .replace("\"", "&quot;")
+                   .replace("'", "&#39;");
+    }
+}
+
+
+
+package com.cstestforge.framework.utils;
+
+import com.cstestforge.framework.reporting.CSReporter;
+import org.openqa.selenium.*;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.Select;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Enhanced WebElement wrapper providing advanced functionality.
+ * Implements smart waits, logging, and extended interactions.
+ */
+public class CSElement {
+
+    private final WebDriver driver;
+    private final By locator;
+    private final String name;
+    private final CSWaitStrategy waitStrategy;
+    private final CSReporter reporter;
+    
+    /**
+     * Constructor
+     * 
+     * @param driver WebDriver instance
+     * @param locator Element locator
+     * @param name Element name
+     * @param waitStrategy Wait strategy
+     */
+    public CSElement(WebDriver driver, By locator, String name, CSWaitStrategy waitStrategy) {
+        this.driver = driver;
+        this.locator = locator;
+        this.name = name;
+        this.waitStrategy = waitStrategy;
+        this.reporter = CSReporter.getInstance();
+    }
+    
+    /**
+     * Get the underlying WebElement
+     * 
+     * @return WebElement
+     */
+    public WebElement getElement() {
+        try {
+            return waitStrategy.waitForElement(locator);
+        } catch (Exception e) {
+            reporter.error("Failed to find element: " + name + " (" + locator + ")", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get multiple elements matching the locator
+     * 
+     * @return List of WebElements
+     */
+    public List<WebElement> getElements() {
+        try {
+            return waitStrategy.waitForElements(locator);
+        } catch (Exception e) {
+            reporter.error("Failed to find elements: " + name + " (" + locator + ")", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Click on the element
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement click() {
+        try {
+            reporter.info("Clicking on: " + name);
+            WebElement element = waitStrategy.waitForClickable(locator);
+            element.click();
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to click on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Click on the element using JavaScript
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement jsClick() {
+        try {
+            reporter.info("JavaScript clicking on: " + name);
+            WebElement element = getElement();
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript("arguments[0].click();", element);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to JavaScript click on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Type text into the element
+     * 
+     * @param text Text to type
+     * @return CSElement for method chaining
+     */
+    public CSElement type(String text) {
+        try {
+            reporter.info("Typing '" + text + "' into: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            element.clear();
+            element.sendKeys(text);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to type into: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Clear the element
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement clear() {
+        try {
+            reporter.info("Clearing: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            element.clear();
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to clear: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get text from the element
+     * 
+     * @return Element text
+     */
+    public String getText() {
+        try {
+            WebElement element = waitStrategy.waitForVisible(locator);
+            String text = element.getText();
+            reporter.debug("Got text from " + name + ": " + text);
+            return text;
+        } catch (Exception e) {
+            reporter.error("Failed to get text from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get attribute value
+     * 
+     * @param attribute Attribute name
+     * @return Attribute value
+     */
+    public String getAttribute(String attribute) {
+        try {
+            WebElement element = getElement();
+            String value = element.getAttribute(attribute);
+            reporter.debug("Got attribute '" + attribute + "' from " + name + ": " + value);
+            return value;
+        } catch (Exception e) {
+            reporter.error("Failed to get attribute '" + attribute + "' from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Select option by visible text
+     * 
+     * @param text Option text
+     * @return CSElement for method chaining
+     */
+    public CSElement selectByText(String text) {
+        try {
+            reporter.info("Selecting '" + text + "' from: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            new Select(element).selectByVisibleText(text);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to select text '" + text + "' from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Select option by value
+     * 
+     * @param value Option value
+     * @return CSElement for method chaining
+     */
+    public CSElement selectByValue(String value) {
+        try {
+            reporter.info("Selecting value '" + value + "' from: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            new Select(element).selectByValue(value);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to select value '" + value + "' from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Select option by index
+     * 
+     * @param index Option index
+     * @return CSElement for method chaining
+     */
+    public CSElement selectByIndex(int index) {
+        try {
+            reporter.info("Selecting index " + index + " from: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            new Select(element).selectByIndex(index);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to select index " + index + " from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get all options from select element
+     * 
+     * @return List of option texts
+     */
+    public List<String> getOptions() {
+        try {
+            WebElement element = waitStrategy.waitForVisible(locator);
+            List<WebElement> options = new Select(element).getOptions();
+            List<String> optionTexts = new ArrayList<>();
+            
+            for (WebElement option : options) {
+                optionTexts.add(option.getText());
+            }
+            
+            reporter.debug("Got " + optionTexts.size() + " options from: " + name);
+            return optionTexts;
+        } catch (Exception e) {
+            reporter.error("Failed to get options from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get selected option text
+     * 
+     * @return Selected option text
+     */
+    public String getSelectedOption() {
+        try {
+            WebElement element = waitStrategy.waitForVisible(locator);
+            String selectedText = new Select(element).getFirstSelectedOption().getText();
+            reporter.debug("Got selected option from " + name + ": " + selectedText);
+            return selectedText;
+        } catch (Exception e) {
+            reporter.error("Failed to get selected option from: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Hover over the element
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement hover() {
+        try {
+            reporter.info("Hovering over: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            new Actions(driver).moveToElement(element).perform();
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to hover over: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Right-click on the element
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement rightClick() {
+        try {
+            reporter.info("Right-clicking on: " + name);
+            WebElement element = waitStrategy.waitForClickable(locator);
+            new Actions(driver).contextClick(element).perform();
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to right-click on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Double-click on the element
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement doubleClick() {
+        try {
+            reporter.info("Double-clicking on: " + name);
+            WebElement element = waitStrategy.waitForClickable(locator);
+            new Actions(driver).doubleClick(element).perform();
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to double-click on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Drag and drop to target element
+     * 
+     * @param target Target element
+     * @return CSElement for method chaining
+     */
+    public CSElement dragAndDropTo(CSElement target) {
+        try {
+            reporter.info("Dragging " + name + " to " + target.name);
+            WebElement sourceElement = waitStrategy.waitForVisible(locator);
+            WebElement targetElement = target.getElement();
+            
+            new Actions(driver)
+                .dragAndDrop(sourceElement, targetElement)
+                .perform();
+            
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to drag and drop: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Scroll element into view
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement scrollIntoView() {
+        try {
+            reporter.info("Scrolling into view: " + name);
+            WebElement element = getElement();
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript("arguments[0].scrollIntoView(true);", element);
+            
+            // Wait for scroll to complete
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to scroll into view: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Check if element is displayed
+     * 
+     * @return true if element is displayed
+     */
+    public boolean isDisplayed() {
+        try {
+            return driver.findElement(locator).isDisplayed();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Check if element is enabled
+     * 
+     * @return true if element is enabled
+     */
+    public boolean isEnabled() {
+        try {
+            return driver.findElement(locator).isEnabled();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Check if element is selected
+     * 
+     * @return true if element is selected
+     */
+    public boolean isSelected() {
+        try {
+            return driver.findElement(locator).isSelected();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Wait for element to be visible
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return CSElement for method chaining
+     */
+    public CSElement waitForVisible(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for " + name + " to be visible (timeout: " + timeoutSeconds + "s)");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+            return this;
+        } catch (Exception e) {
+            reporter.error("Timeout waiting for element to be visible: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to be clickable
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return CSElement for method chaining
+     */
+    public CSElement waitForClickable(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for " + name + " to be clickable (timeout: " + timeoutSeconds + "s)");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            wait.until(ExpectedConditions.elementToBeClickable(locator));
+            return this;
+        } catch (Exception e) {
+            reporter.error("Timeout waiting for element to be clickable: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to contain text
+     * 
+     * @param text Text to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return CSElement for method chaining
+     */
+    public CSElement waitForText(String text, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for " + name + " to contain text: " + text + " (timeout: " + timeoutSeconds + "s)");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            wait.until(ExpectedConditions.textToBePresentInElementLocated(locator, text));
+            return this;
+        } catch (Exception e) {
+            reporter.error("Timeout waiting for element to contain text: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Take screenshot of the element
+     * 
+     * @return Base64 encoded screenshot
+     */
+    public String takeScreenshot() {
+        try {
+            reporter.debug("Taking screenshot of: " + name);
+            WebElement element = getElement();
+            
+            if (element instanceof TakesScreenshot) {
+                return ((TakesScreenshot) element).getScreenshotAs(OutputType.BASE64);
+            } else {
+                // Fallback to highlighting element in full screenshot
+                highlightElement(element);
+                String screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BASE64);
+                unhighlightElement(element);
+                return screenshot;
+            }
+        } catch (Exception e) {
+            reporter.error("Failed to take screenshot of: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Highlight the element
+     * 
+     * @param element WebElement to highlight
+     */
+    private void highlightElement(WebElement element) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "arguments[0].setAttribute('style', 'border: 2px solid red; background-color: yellow;');", 
+                element
+            );
+        } catch (Exception e) {
+            // Ignore highlight errors
+        }
+    }
+    
+    /**
+     * Remove highlight from element
+     * 
+     * @param element WebElement to unhighlight
+     */
+    private void unhighlightElement(WebElement element) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "arguments[0].setAttribute('style', '');", 
+                element
+            );
+        } catch (Exception e) {
+            // Ignore unhighlight errors
+        }
+    }
+    
+    /**
+     * Execute JavaScript on the element
+     * 
+     * @param script JavaScript to execute
+     * @param args Script arguments
+     * @return Script result
+     */
+    public Object executeScript(String script, Object... args) {
+        try {
+            reporter.debug("Executing JavaScript on: " + name);
+            WebElement element = getElement();
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            
+            // Prepend the element as the first argument
+            Object[] newArgs = new Object[args.length + 1];
+            newArgs[0] = element;
+            System.arraycopy(args, 0, newArgs, 1, args.length);
+            
+            return js.executeScript(script, newArgs);
+        } catch (Exception e) {
+            reporter.error("Failed to execute JavaScript on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Upload file
+     * 
+     * @param filePath Path to file
+     * @return CSElement for method chaining
+     */
+    public CSElement uploadFile(String filePath) {
+        try {
+            reporter.info("Uploading file to: " + name);
+            WebElement element = getElement();
+            element.sendKeys(filePath);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to upload file to: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Press key
+     * 
+     * @param key Key to press
+     * @return CSElement for method chaining
+     */
+    public CSElement pressKey(Keys key) {
+        try {
+            reporter.info("Pressing key " + key.name() + " on: " + name);
+            WebElement element = waitStrategy.waitForVisible(locator);
+            element.sendKeys(key);
+            return this;
+        } catch (Exception e) {
+            reporter.error("Failed to press key on: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get element location
+     * 
+     * @return Element location
+     */
+    public Point getLocation() {
+        try {
+            WebElement element = getElement();
+            return element.getLocation();
+        } catch (Exception e) {
+            reporter.error("Failed to get location of: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get element size
+     * 
+     * @return Element size
+     */
+    public Dimension getSize() {
+        try {
+            WebElement element = getElement();
+            return element.getSize();
+        } catch (Exception e) {
+            reporter.error("Failed to get size of: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get element rect
+     * 
+     * @return Element rect
+     */
+    public Rectangle getRect() {
+        try {
+            WebElement element = getElement();
+            return element.getRect();
+        } catch (Exception e) {
+            reporter.error("Failed to get rect of: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Get CSS value
+     * 
+     * @param propertyName CSS property name
+     * @return CSS property value
+     */
+    public String getCssValue(String propertyName) {
+        try {
+            WebElement element = getElement();
+            return element.getCssValue(propertyName);
+        } catch (Exception e) {
+            reporter.error("Failed to get CSS value of: " + name, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Assert element is displayed
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement assertDisplayed() {
+        try {
+            if (isDisplayed()) {
+                reporter.pass("Element is displayed: " + name);
+            } else {
+                reporter.fail("Element is not displayed: " + name);
+                throw new AssertionError("Element is not displayed: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Assert element is enabled
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement assertEnabled() {
+        try {
+            if (isEnabled()) {
+                reporter.pass("Element is enabled: " + name);
+            } else {
+                reporter.fail("Element is not enabled: " + name);
+                throw new AssertionError("Element is not enabled: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Assert element is selected
+     * 
+     * @return CSElement for method chaining
+     */
+    public CSElement assertSelected() {
+        try {
+            if (isSelected()) {
+                reporter.pass("Element is selected: " + name);
+            } else {
+                reporter.fail("Element is not selected: " + name);
+                throw new AssertionError("Element is not selected: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Assert element text equals expected text
+     * 
+     * @param expectedText Expected text
+     * @return CSElement for method chaining
+     */
+    public CSElement assertText(String expectedText) {
+        try {
+            String actualText = getText();
+            if (actualText.equals(expectedText)) {
+                reporter.pass("Element text matches expected: " + name);
+            } else {
+                reporter.fail("Element text does not match expected: " + name + 
+                            "\nExpected: " + expectedText + 
+                            "\nActual: " + actualText);
+                throw new AssertionError("Element text does not match expected: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Assert element text contains expected text
+     * 
+     * @param expectedText Expected text
+     * @return CSElement for method chaining
+     */
+    public CSElement assertTextContains(String expectedText) {
+        try {
+            String actualText = getText();
+            if (actualText.contains(expectedText)) {
+                reporter.pass("Element text contains expected: " + name);
+            } else {
+                reporter.fail("Element text does not contain expected: " + name + 
+                            "\nExpected to contain: " + expectedText + 
+                            "\nActual: " + actualText);
+                throw new AssertionError("Element text does not contain expected: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Assert element attribute equals expected value
+     * 
+     * @param attribute Attribute name
+     * @param expectedValue Expected value
+     * @return CSElement for method chaining
+     */
+    public CSElement assertAttribute(String attribute, String expectedValue) {
+        try {
+            String actualValue = getAttribute(attribute);
+            if (actualValue.equals(expectedValue)) {
+                reporter.pass("Element attribute matches expected: " + name);
+            } else {
+                reporter.fail("Element attribute does not match expected: " + name + 
+                            "\nAttribute: " + attribute + 
+                            "\nExpected: " + expectedValue + 
+                            "\nActual: " + actualValue);
+                throw new AssertionError("Element attribute does not match expected: " + name);
+            }
+            return this;
+        } catch (NoSuchElementException e) {
+            reporter.fail("Element not found: " + name);
+            throw new AssertionError("Element not found: " + name, e);
+        }
+    }
+    
+    /**
+     * Get the element locator
+     * 
+     * @return Element locator
+     */
+    public By getLocator() {
+        return locator;
+    }
+    
+    /**
+     * Get the element name
+     * 
+     * @return Element name
+     */
+    public String getName() {
+        return name;
+    }
+}
+
+
+
+package com.cstestforge.framework.utils;
+
+import com.cstestforge.framework.reporting.CSReporter;
+import org.openqa.selenium.*;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.FluentWait;
+import org.openqa.selenium.support.ui.Wait;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.function.Function;
+
+/**
+ * Smart wait strategy for improved element interaction reliability.
+ * Implements dynamic waits, custom conditions, and adaptive timing.
+ */
+public class CSWaitStrategy {
+
+    private final WebDriver driver;
+    private final int defaultTimeoutSeconds;
+    private final int pollingIntervalMs;
+    private final CSReporter reporter;
+    
+    /**
+     * Constructor
+     * 
+     * @param driver WebDriver instance
+     * @param defaultTimeoutSeconds Default timeout in seconds
+     */
+    public CSWaitStrategy(WebDriver driver, int defaultTimeoutSeconds) {
+        this.driver = driver;
+        this.defaultTimeoutSeconds = defaultTimeoutSeconds;
+        this.pollingIntervalMs = 500; // Default polling interval
+        this.reporter = CSReporter.getInstance();
+    }
+    
+    /**
+     * Constructor with custom polling interval
+     * 
+     * @param driver WebDriver instance
+     * @param defaultTimeoutSeconds Default timeout in seconds
+     * @param pollingIntervalMs Polling interval in milliseconds
+     */
+    public CSWaitStrategy(WebDriver driver, int defaultTimeoutSeconds, int pollingIntervalMs) {
+        this.driver = driver;
+        this.defaultTimeoutSeconds = defaultTimeoutSeconds;
+        this.pollingIntervalMs = pollingIntervalMs;
+        this.reporter = CSReporter.getInstance();
+    }
+    
+    /**
+     * Wait for element to be present in DOM
+     * 
+     * @param locator Element locator
+     * @return WebElement
+     */
+    public WebElement waitForElement(By locator) {
+        return waitForElement(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to be present in DOM with custom timeout
+     * 
+     * @param locator Element locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return WebElement
+     */
+    public WebElement waitForElement(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to be present: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.presenceOfElementLocated(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for elements to be present in DOM
+     * 
+     * @param locator Elements locator
+     * @return List of WebElements
+     */
+    public List<WebElement> waitForElements(By locator) {
+        return waitForElements(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for elements to be present in DOM with custom timeout
+     * 
+     * @param locator Elements locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return List of WebElements
+     */
+    public List<WebElement> waitForElements(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for elements to be present: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.presenceOfAllElementsLocatedBy(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for elements: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to be visible
+     * 
+     * @param locator Element locator
+     * @return WebElement
+     */
+    public WebElement waitForVisible(By locator) {
+        return waitForVisible(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to be visible with custom timeout
+     * 
+     * @param locator Element locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return WebElement
+     */
+    public WebElement waitForVisible(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to be visible: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to be visible: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for all elements to be visible
+     * 
+     * @param locator Elements locator
+     * @return List of WebElements
+     */
+    public List<WebElement> waitForAllVisible(By locator) {
+        return waitForAllVisible(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for all elements to be visible with custom timeout
+     * 
+     * @param locator Elements locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return List of WebElements
+     */
+    public List<WebElement> waitForAllVisible(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for all elements to be visible: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.visibilityOfAllElementsLocatedBy(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for all elements to be visible: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to be clickable
+     * 
+     * @param locator Element locator
+     * @return WebElement
+     */
+    public WebElement waitForClickable(By locator) {
+        return waitForClickable(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to be clickable with custom timeout
+     * 
+     * @param locator Element locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return WebElement
+     */
+    public WebElement waitForClickable(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to be clickable: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.elementToBeClickable(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to be clickable: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to be invisible
+     * 
+     * @param locator Element locator
+     * @return true if element is invisible
+     */
+    public boolean waitForInvisible(By locator) {
+        return waitForInvisible(locator, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to be invisible with custom timeout
+     * 
+     * @param locator Element locator
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if element is invisible
+     */
+    public boolean waitForInvisible(By locator, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to be invisible: " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.invisibilityOfElementLocated(locator));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to be invisible: " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to contain text
+     * 
+     * @param locator Element locator
+     * @param text Text to wait for
+     * @return true if element contains text
+     */
+    public boolean waitForTextPresent(By locator, String text) {
+        return waitForTextPresent(locator, text, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to contain text with custom timeout
+     * 
+     * @param locator Element locator
+     * @param text Text to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if element contains text
+     */
+    public boolean waitForTextPresent(By locator, String text, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to contain text '" + text + "': " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.textToBePresentInElementLocated(locator, text));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to contain text '" + text + "': " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element attribute to contain value
+     * 
+     * @param locator Element locator
+     * @param attribute Attribute name
+     * @param value Value to wait for
+     * @return true if attribute contains value
+     */
+    public boolean waitForAttributeValue(By locator, String attribute, String value) {
+        return waitForAttributeValue(locator, attribute, value, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element attribute to contain value with custom timeout
+     * 
+     * @param locator Element locator
+     * @param attribute Attribute name
+     * @param value Value to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if attribute contains value
+     */
+    public boolean waitForAttributeValue(By locator, String attribute, String value, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element attribute '" + attribute + "' to contain '" + value + "': " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.attributeContains(locator, attribute, value));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element attribute '" + attribute + "' to contain '" + value + "': " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for page title to contain text
+     * 
+     * @param title Title text to wait for
+     * @return true if page title contains text
+     */
+    public boolean waitForTitleContains(String title) {
+        return waitForTitleContains(title, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for page title to contain text with custom timeout
+     * 
+     * @param title Title text to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if page title contains text
+     */
+    public boolean waitForTitleContains(String title, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for page title to contain: " + title);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.titleContains(title));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for page title to contain: " + title, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for page title to be exact text
+     * 
+     * @param title Exact title text to wait for
+     * @return true if page title is exact text
+     */
+    public boolean waitForTitleIs(String title) {
+        return waitForTitleIs(title, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for page title to be exact text with custom timeout
+     * 
+     * @param title Exact title text to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if page title is exact text
+     */
+    public boolean waitForTitleIs(String title, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for page title to be: " + title);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.titleIs(title));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for page title to be: " + title, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for URL to contain text
+     * 
+     * @param urlFragment URL fragment to wait for
+     * @return true if URL contains text
+     */
+    public boolean waitForUrlContains(String urlFragment) {
+        return waitForUrlContains(urlFragment, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for URL to contain text with custom timeout
+     * 
+     * @param urlFragment URL fragment to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if URL contains text
+     */
+    public boolean waitForUrlContains(String urlFragment, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for URL to contain: " + urlFragment);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.urlContains(urlFragment));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for URL to contain: " + urlFragment, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for page to load completely
+     * Uses document.readyState to determine if page is loaded
+     * 
+     * @return true if page is loaded
+     */
+    public boolean waitForPageLoad() {
+        return waitForPageLoad(defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for page to load completely with custom timeout
+     * Uses document.readyState to determine if page is loaded
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if page is loaded
+     */
+    public boolean waitForPageLoad(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for page to load");
+            
+            Wait<WebDriver> wait = new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .pollingEvery(Duration.ofMillis(pollingIntervalMs))
+                    .ignoring(Exception.class);
+            
+            // Wait for document ready state
+            return wait.until(driver -> {
+                try {
+                    return ((JavascriptExecutor) driver)
+                            .executeScript("return document.readyState")
+                            .equals("complete");
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for page to load", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for jQuery to be loaded and idle
+     * 
+     * @return true if jQuery is loaded and idle
+     */
+    public boolean waitForJQueryLoad() {
+        return waitForJQueryLoad(defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for jQuery to be loaded and idle with custom timeout
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if jQuery is loaded and idle
+     */
+    public boolean waitForJQueryLoad(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for jQuery to load and be idle");
+            
+            // First check if jQuery is available
+            boolean jQueryDefined = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return typeof jQuery != 'undefined'");
+            
+            if (!jQueryDefined) {
+                reporter.debug("jQuery is not defined on this page");
+                return true; // Not an error if jQuery is not used on the page
+            }
+            
+            Wait<WebDriver> wait = new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .pollingEvery(Duration.ofMillis(pollingIntervalMs))
+                    .ignoring(Exception.class);
+            
+            // Wait for jQuery to be idle
+            return wait.until(driver -> {
+                try {
+                    return (Boolean) ((JavascriptExecutor) driver)
+                            .executeScript("return jQuery.active == 0");
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for jQuery to load and be idle", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for Angular to be loaded and idle
+     * 
+     * @return true if Angular is loaded and idle
+     */
+    public boolean waitForAngularLoad() {
+        return waitForAngularLoad(defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for Angular to be loaded and idle with custom timeout
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if Angular is loaded and idle
+     */
+    public boolean waitForAngularLoad(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for Angular to load and be idle");
+            
+            // First check if Angular is available (works for both AngularJS and Angular)
+            Boolean angularDefined = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return window.angular !== undefined || !!window.getAllAngularTestabilities");
+            
+            if (!angularDefined) {
+                reporter.debug("Angular is not defined on this page");
+                return true; // Not an error if Angular is not used on the page
+            }
+            
+            // Check for Angular (2+)
+            Boolean isAngular2Plus = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return !!window.getAllAngularTestabilities");
+            
+            Wait<WebDriver> wait = new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .pollingEvery(Duration.ofMillis(pollingIntervalMs))
+                    .ignoring(Exception.class);
+            
+            if (isAngular2Plus) {
+                // For Angular 2+
+                String angularStabilityScript = 
+                        "var callback = arguments[arguments.length - 1];" +
+                        "var testabilities = window.getAllAngularTestabilities();" +
+                        "var count = testabilities.length;" +
+                        "var stabilityCheck = function(testability) {" +
+                        "  testability.whenStable(function() {" +
+                        "    count--;" +
+                        "    if (count === 0) {" +
+                        "      callback(true);" +
+                        "    }" +
+                        "  });" +
+                        "};" +
+                        "if (count === 0) {" +
+                        "  callback(true);" +
+                        "} else {" +
+                        "  testabilities.forEach(stabilityCheck);" +
+                        "}";
+                
+                try {
+                    ((JavascriptExecutor) driver).executeAsyncScript(angularStabilityScript);
+                    return true;
+                } catch (Exception e) {
+                    reporter.error("Error waiting for Angular stability", e);
+                    return false;
+                }
+            } else {
+                // For AngularJS
+                return wait.until(driver -> {
+                    try {
+                        return (Boolean) ((JavascriptExecutor) driver)
+                                .executeScript("return window.angular.element(document).injector().get('$http').pendingRequests.length === 0");
+                    } catch (Exception e) {
+                        return false;
+                    }
+                });
+            }
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for Angular to load and be idle", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to have specific CSS class
+     * 
+     * @param locator Element locator
+     * @param className CSS class name
+     * @return true if element has CSS class
+     */
+    public boolean waitForClassPresent(By locator, String className) {
+        return waitForClassPresent(locator, className, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to have specific CSS class with custom timeout
+     * 
+     * @param locator Element locator
+     * @param className CSS class name
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if element has CSS class
+     */
+    public boolean waitForClassPresent(By locator, String className, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to have class '" + className + "': " + locator);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            
+            return wait.until(driver -> {
+                try {
+                    WebElement element = driver.findElement(locator);
+                    String classes = element.getAttribute("class");
+                    return classes != null && classes.contains(className);
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to have class '" + className + "': " + locator, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for element to be stale (no longer attached to DOM)
+     * 
+     * @param element WebElement
+     * @return true if element is stale
+     */
+    public boolean waitForStale(WebElement element) {
+        return waitForStale(element, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for element to be stale (no longer attached to DOM) with custom timeout
+     * 
+     * @param element WebElement
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if element is stale
+     */
+    public boolean waitForStale(WebElement element, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for element to be stale");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(ExpectedConditions.stalenessOf(element));
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for element to be stale", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait until a given condition is true
+     * 
+     * @param <T> Return type of the condition
+     * @param condition Condition to wait for
+     * @return Result of condition evaluation
+     */
+    public <T> T waitUntil(Function<WebDriver, T> condition) {
+        return waitUntil(condition, defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait until a given condition is true with custom timeout
+     * 
+     * @param <T> Return type of the condition
+     * @param condition Condition to wait for
+     * @param timeoutSeconds Timeout in seconds
+     * @return Result of condition evaluation
+     */
+    public <T> T waitUntil(Function<WebDriver, T> condition, int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for custom condition");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(timeoutSeconds));
+            return wait.until(condition);
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for custom condition", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait with a fixed delay
+     * Note: Use only when absolutely necessary, prefer explicit waits
+     * 
+     * @param milliseconds Delay in milliseconds
+     */
+    public void waitForFixedDelay(int milliseconds) {
+        try {
+            reporter.debug("Waiting for fixed delay: " + milliseconds + "ms");
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            reporter.error("Fixed delay interrupted", e);
+        }
+    }
+    
+    /**
+     * Check if page is loaded
+     * 
+     * @return true if page is loaded
+     */
+    public boolean isPageLoaded() {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            return js.executeScript("return document.readyState").equals("complete");
+        } catch (Exception e) {
+            reporter.error("Error checking if page is loaded", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Wait for any AJAX requests to complete
+     * 
+     * @return true if AJAX requests completed
+     */
+    public boolean waitForAjaxComplete() {
+        return waitForAjaxComplete(defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for any AJAX requests to complete with custom timeout
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if AJAX requests completed
+     */
+    public boolean waitForAjaxComplete(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for AJAX requests to complete");
+            
+            // First wait for jQuery if it's used
+            boolean jQueryDefined = (Boolean) ((JavascriptExecutor) driver)
+                    .executeScript("return typeof jQuery != 'undefined'");
+            
+            if (jQueryDefined) {
+                waitForJQueryLoad(timeoutSeconds);
+            }
+            
+            // Then wait for XMLHttpRequest
+            Wait<WebDriver> wait = new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .pollingEvery(Duration.ofMillis(pollingIntervalMs))
+                    .ignoring(Exception.class);
+            
+            return wait.until(driver -> {
+                try {
+                    JavascriptExecutor js = (JavascriptExecutor) driver;
+                    return (Boolean) js.executeScript(
+                            "return (window.XMLHttpRequest === undefined || " +
+                            "(window.XMLHttpRequest !== undefined && " +
+                            "(document.readyState === 'complete' || document.readyState === 'interactive')))");
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for AJAX requests to complete", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Wait for animation to complete
+     * 
+     * @return true if animation completed
+     */
+    public boolean waitForAnimationComplete() {
+        return waitForAnimationComplete(defaultTimeoutSeconds);
+    }
+    
+    /**
+     * Wait for animation to complete with custom timeout
+     * 
+     * @param timeoutSeconds Timeout in seconds
+     * @return true if animation completed
+     */
+    public boolean waitForAnimationComplete(int timeoutSeconds) {
+        try {
+            reporter.debug("Waiting for animations to complete");
+            
+            Wait<WebDriver> wait = new FluentWait<>(driver)
+                    .withTimeout(Duration.ofSeconds(timeoutSeconds))
+                    .pollingEvery(Duration.ofMillis(pollingIntervalMs))
+                    .ignoring(Exception.class);
+            
+            return wait.until(driver -> {
+                try {
+                    JavascriptExecutor js = (JavascriptExecutor) driver;
+                    
+                    // Check jQuery animations
+                    boolean jQueryDefined = (Boolean) js.executeScript("return typeof jQuery != 'undefined'");
+                    if (jQueryDefined) {
+                        boolean jQueryAnimationsComplete = (Boolean) js.executeScript("return jQuery(':animated').length === 0");
+                        if (!jQueryAnimationsComplete) {
+                            return false;
+                        }
+                    }
+                    
+                    // Check CSS animations
+                    boolean cssAnimationsComplete = (Boolean) js.executeScript(
+                            "var animating = false;" +
+                            "var styles = window.getComputedStyle(document.body);" +
+                            "if (styles && styles.getPropertyValue('animation-name') !== 'none') {" +
+                            "    animating = true;" +
+                            "}" +
+                            "return !animating;");
+                    
+                    return cssAnimationsComplete;
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+        } catch (TimeoutException e) {
+            reporter.error("Timeout waiting for animations to complete", e);
+            throw e;
+        }
+    }
+    
+    /**
+     * Check if element exists in DOM
+     * 
+     * @param locator Element locator
+     * @return true if element exists
+     */
+    public boolean isElementExists(By locator) {
+        try {
+            driver.findElement(locator);
+            return true;
+        } catch (NoSuchElementException e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Check if element is visible
+     * 
+     * @param locator Element locator
+     * @return true if element is visible
+     */
+    public boolean isElementVisible(By locator) {
+        try {
+            return driver.findElement(locator).isDisplayed();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Get default timeout in seconds
+     * 
+     * @return Default timeout in seconds
+     */
+    public int getDefaultTimeoutSeconds() {
+        return defaultTimeoutSeconds;
+    }
+    
+    /**
+     * Get polling interval in milliseconds
+     * 
+     * @return Polling interval in milliseconds
+     */
+    public int getPollingIntervalMs() {
+        return pollingIntervalMs;
+    }
+}
+
+package com.cstestforge.framework.annotations;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Annotation to define element locator strategies.
+ * Used to mark fields in Page Objects for automatic initialization.
+ */
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.FIELD, ElementType.TYPE})
+public @interface CSFindBy {
+    
+    /**
+     * ID locator
+     */
+    String id() default "";
+    
+    /**
+     * Name locator
+     */
+    String name() default "";
+    
+    /**
+     * Class name locator
+     */
+    String className() default "";
+    
+    /**
+     * CSS selector locator
+     */
+    String css() default "";
+    
+    /**
+     * XPath locator
+     */
+    String xpath() default "";
+    
+    /**
+     * Tag name locator
+     */
+    String tagName() default "";
+    
+    /**
+     * Link text locator
+     */
+    String linkText() default "";
+    
+    /**
+     * Partial link text locator
+     */
+    String partialLinkText() default "";
+    
+    /**
+     * Custom AI locator - automatically generated
+     */
+    String aiLocator() default "";
+    
+    /**
+     * Priority order of locator strategies
+     */
+    int priority() default 0;
+    
+    /**
+     * Custom wait timeout in seconds
+     * If not specified, default timeout is used
+     */
+    int timeoutSeconds() default -1;
+    
+    /**
+     * Description for improved logging and reporting
+     */
+    String description() default "";
+}
+
+
+package com.cstestforge.framework.core;
+
+/**
+ * Interface for test steps.
+ * Provides a standard way to define test steps for better organization and reporting.
+ */
+@FunctionalInterface
+public interface CSTestStep {
+    
+    /**
+     * Execute the test step
+     * 
+     * @throws Exception if step execution fails
+     */
+    void execute() throws Exception;
+    
+    /**
+     * Create a step with a descriptive name
+     * 
+     * @param name Step name
+     * @param step Step implementation
+     * @return Named test step
+     */
+    static CSTestStep named(String name, CSTestStep step) {
+        return new NamedTestStep(name, step);
+    }
+    
+    /**
+     * Implementation of named test step
+     */
+    class NamedTestStep implements CSTestStep {
+        private final String name;
+        private final CSTestStep step;
+        
+        /**
+         * Constructor
+         * 
+         * @param name Step name
+         * @param step Step implementation
+         */
+        public NamedTestStep(String name, CSTestStep step) {
+            this.name = name;
+            this.step = step;
+        }
+        
+        @Override
+        public void execute() throws Exception {
+            step.execute();
+        }
+        
+        /**
+         * Get step name
+         * 
+         * @return Step name
+         */
+        public String getName() {
+            return name;
+        }
+        
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+    
+    /**
+     * Create a conditional step that executes if condition is true
+     * 
+     * @param condition Condition to check
+     * @param step Step to execute if condition is true
+     * @return Conditional test step
+     */
+    static CSTestStep ifThen(java.util.function.BooleanSupplier condition, CSTestStep step) {
+        return () -> {
+            if (condition.getAsBoolean()) {
+                step.execute();
+            }
+        };
+    }
+    
+    /**
+     * Create a conditional step with else branch
+     * 
+     * @param condition Condition to check
+     * @param thenStep Step to execute if condition is true
+     * @param elseStep Step to execute if condition is false
+     * @return Conditional test step with else branch
+     */
+    static CSTestStep ifThenElse(java.util.function.BooleanSupplier condition, CSTestStep thenStep, CSTestStep elseStep) {
+        return () -> {
+            if (condition.getAsBoolean()) {
+                thenStep.execute();
+            } else {
+                elseStep.execute();
+            }
+        };
+    }
+    
+    /**
+     * Create a step that retries on failure
+     * 
+     * @param step Step to retry
+     * @param maxAttempts Maximum number of attempts
+     * @return Retry test step
+     */
+    static CSTestStep retry(CSTestStep step, int maxAttempts) {
+        return () -> {
+            Exception lastException = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    step.execute();
+                    return; // Success, exit
+                } catch (Exception e) {
+                    lastException = e;
+                    if (attempt < maxAttempts) {
+                        // Wait before retry
+                        try {
+                            Thread.sleep(1000); // 1 second between retries
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw ie;
+                        }
+                    }
+                }
+            }
+            // All attempts failed
+            if (lastException != null) {
+                throw lastException;
+            }
+        };
+    }
+    
+    /**
+     * Create a step that executes multiple steps in sequence
+     * 
+     * @param steps Steps to execute
+     * @return Sequence test step
+     */
+    static CSTestStep sequence(CSTestStep... steps) {
+        return () -> {
+            for (CSTestStep step : steps) {
+                step.execute();
+            }
+        };
+    }
+    
+    /**
+     * Create a step with timeout
+     * 
+     * @param step Step to execute
+     * @param timeoutMillis Timeout in milliseconds
+     * @return Timeout test step
+     */
+    static CSTestStep withTimeout(CSTestStep step, long timeoutMillis) {
+        return () -> {
+            java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+            java.util.concurrent.Future<?> future = executor.submit(() -> {
+                try {
+                    step.execute();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            
+            try {
+                future.get(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException e) {
+                future.cancel(true);
+                throw new RuntimeException("Step timed out after " + timeoutMillis + "ms", e);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                executor.shutdownNow();
+            }
+        };
+    }
+    
+    /**
+     * Create a step that catches exceptions
+     * 
+     * @param step Step to execute
+     * @return Exception-catching test step
+     */
+    static CSTestStep ignoreExceptions(CSTestStep step) {
+        return () -> {
+            try {
+                step.execute();
+            } catch (Exception e) {
+                // Ignore exceptions
+            }
+        };
+    }
+}
+
+
+package com.cstestforge.framework.config;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+/**
+ * Configuration manager for CSTestForge framework.
+ * Handles loading and accessing configuration from various sources.
+ */
+public class ConfigurationManager {
+
+    private static final String DEFAULT_CONFIG_FILE = "cstestforge.properties";
+    private static final String ENV_CONFIG_PATH = "CSTESTFORGE_CONFIG";
+    
+    private static ConfigurationManager instance;
+    private static final Object LOCK = new Object();
+    
+    private final Map<String, String> configuration = new HashMap<>();
+    private boolean isInitialized = false;
+    
+    /**
+     * Default values for configuration
+     */
+    private static final Map<String, String> DEFAULT_VALUES = Map.of(
+        "browser.type", "chrome",
+        "browser.headless", "false",
+        "report.path", "reports",
+        "screenshot.path", "screenshots",
+        "explicit.wait.timeout", "30",
+        "implicit.wait.timeout", "0",
+        "page.load.timeout", "60",
+        "log.level", "INFO",
+        "project.name", "CSTestForge",
+        "data.directory", "test-data",
+        "test.execution.parallel", "false",
+        "test.execution.retry.count", "0",
+        "test.execution.retry.delay", "1000",
+        "element.highlight", "true"
+    );
+    
+    /**
+     * Private constructor to enforce singleton pattern
+     */
+    private ConfigurationManager() {
+        // Initialize with default values
+        configuration.putAll(DEFAULT_VALUES);
+    }
+    
+    /**
+     * Get singleton instance
+     * 
+     * @return ConfigurationManager instance
+     */
+    public static ConfigurationManager getInstance() {
+        if (instance == null) {
+            synchronized (LOCK) {
+                if (instance == null) {
+                    instance = new ConfigurationManager();
+                }
+            }
+        }
+        
+        return instance;
+    }
+    
+    /**
+     * Load configuration from all sources
+     */
+    public void loadConfiguration() {
+        if (isInitialized) {
+            return;
+        }
+        
+        // Load configuration in order of precedence
+        
+        // 1. Load from default configuration file
+        loadFromFile(DEFAULT_CONFIG_FILE);
+        
+        // 2. Load from custom configuration file specified by environment variable
+        String customConfigPath = System.getenv(ENV_CONFIG_PATH);
+        if (customConfigPath != null && !customConfigPath.isEmpty()) {
+            loadFromFile(customConfigPath);
+        }
+        
+        // 3. Load from system properties (highest precedence)
+        loadFromSystemProperties();
+        
+        isInitialized = true;
+    }
+    
+    /**
+     * Load configuration from file
+     * 
+     * @param filePath Path to configuration file
+     */
+    private void loadFromFile(String filePath) {
+        Path path = Paths.get(filePath);
+        
+        if (!Files.exists(path)) {
+            System.out.println("Configuration file not found: " + filePath);
+            return;
+        }
+        
+        Properties properties = new Properties();
+        
+        try (InputStream input = new FileInputStream(path.toFile())) {
+            properties.load(input);
+            
+            for (String name : properties.stringPropertyNames()) {
+                String value = properties.getProperty(name);
+                configuration.put(name, value);
+            }
+            
+            System.out.println("Loaded configuration from: " + filePath);
+        } catch (IOException e) {
+            System.err.println("Error loading configuration from file: " + filePath);
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Load configuration from system properties
+     */
+    private void loadFromSystemProperties() {
+        for (String key : configuration.keySet()) {
+            String systemValue = System.getProperty(key);
+            if (systemValue != null && !systemValue.isEmpty()) {
+                configuration.put(key, systemValue);
+            }
+        }
+    }
+    
+    /**
+     * Get configuration value
+     * 
+     * @param key Configuration key
+     * @return Configuration value or default value if not found
+     */
+    public String getValue(String key) {
+        if (!isInitialized) {
+            loadConfiguration();
+        }
+        
+        return configuration.getOrDefault(key, DEFAULT_VALUES.getOrDefault(key, null));
+    }
+    
+    /**
+     * Get configuration value with default
+     * 
+     * @param key Configuration key
+     * @param defaultValue Default value if key not found
+     * @return Configuration value or provided default value if not found
+     */
+    public String getValue(String key, String defaultValue) {
+        if (!isInitialized) {
+            loadConfiguration();
+        }
+        
+        return configuration.getOrDefault(key, defaultValue);
+    }
+    
+    /**
+     * Set configuration value
+     * 
+     * @param key Configuration key
+     * @param value Configuration value
+     */
+    public void setValue(String key, String value) {
+        configuration.put(key, value);
+    }
+    
+    /**
+     * Get integer configuration value
+     * 
+     * @param key Configuration key
+     * @param defaultValue Default value if key not found or not an integer
+     * @return Configuration value as integer
+     */
+    public int getIntValue(String key, int defaultValue) {
+        String value = getValue(key);
+        
+        if (value == null) {
+            return defaultValue;
+        }
+        
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            System.err.println("Invalid integer value for key: " + key + ", using default: " + defaultValue);
+            return defaultValue;
+        }
+    }
+    
+    /**
+     * Get boolean configuration value
+     * 
+     * @param key Configuration key
+     * @param defaultValue Default value if key not found
+     * @return Configuration value as boolean
+     */
+    public boolean getBooleanValue(String key, boolean defaultValue) {
+        String value = getValue(key);
+        
+        if (value == null) {
+            return defaultValue;
+        }
+        
+        return Boolean.parseBoolean(value);
+    }
+    
+    /**
+     * Get browser type from configuration
+     * 
+     * @return Browser type
+     */
+    public String getBrowserType() {
+        return getValue("browser.type");
+    }
+    
+    /**
+     * Get headless mode from configuration
+     * 
+     * @return true if headless mode is enabled
+     */
+    public boolean isHeadless() {
+        return getBooleanValue("browser.headless", false);
+    }
+    
+    /**
+     * Get explicit wait timeout from configuration
+     * 
+     * @return Explicit wait timeout in seconds
+     */
+    public int getExplicitWaitTimeout() {
+        return getIntValue("explicit.wait.timeout", 30);
+    }
+    
+    /**
+     * Get implicit wait timeout from configuration
+     * 
+     * @return Implicit wait timeout in seconds
+     */
+    public int getImplicitWaitTimeout() {
+        return getIntValue("implicit.wait.timeout", 0);
+    }
+    
+    /**
+     * Get page load timeout from configuration
+     * 
+     * @return Page load timeout in seconds
+     */
+    public int getPageLoadTimeout() {
+        return getIntValue("page.load.timeout", 60);
+    }
+    
+    /**
+     * Get report path from configuration
+     * 
+     * @return Report path
+     */
+    public String getReportPath() {
+        return getValue("report.path");
+    }
+    
+    /**
+     * Get screenshot path from configuration
+     * 
+     * @return Screenshot path
+     */
+    public String getScreenshotPath() {
+        return getValue("screenshot.path");
+    }
+    
+    /**
+     * Get log level from configuration
+     * 
+     * @return Log level
+     */
+    public String getLogLevel() {
+        return getValue("log.level");
+    }
+    
+    /**
+     * Get project name from configuration
+     * 
+     * @return Project name
+     */
+    public String getProjectName() {
+        return getValue("project.name");
+    }
+    
+    /**
+     * Get parallel execution flag from configuration
+     * 
+     * @return true if parallel execution is enabled
+     */
+    public boolean isParallelExecution() {
+        return getBooleanValue("test.execution.parallel", false);
+    }
+    
+    /**
+     * Get retry count from configuration
+     * 
+     * @return Retry count
+     */
+    public int getRetryCount() {
+        return getIntValue("test.execution.retry.count", 0);
+    }
+    
+    /**
+     * Get retry delay from configuration
+     * 
+     * @return Retry delay in milliseconds
+     */
+    public int getRetryDelay() {
+        return getIntValue("test.execution.retry.delay", 1000);
+    }
+    
+    /**
+     * Get element highlight flag from configuration
+     * 
+     * @return true if element highlighting is enabled
+     */
+    public boolean isElementHighlightEnabled() {
+        return getBooleanValue("element.highlight", true);
+    }
+    
+    /**
+     * Get all configuration values
+     * 
+     * @return Map of all configuration values
+     */
+    public Map<String, String> getAllValues() {
+        return new HashMap<>(configuration);
+    }
+}
+
+
+package com.cstestforge.framework.driver;
+
+import com.cstestforge.framework.config.ConfigurationManager;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.edge.EdgeDriver;
+import org.openqa.selenium.edge.EdgeOptions;
+import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Driver manager for WebDriver instances.
+ * Manages creation, retrieval, and cleanup of WebDriver instances.
+ */
+public class DriverManager {
+
+    private static final ThreadLocal<WebDriver> driverThreadLocal = new ThreadLocal<>();
+    private static final Map<Long, WebDriver> allDrivers = new ConcurrentHashMap<>();
+    
+    /**
+     * Get WebDriver instance for current thread
+     * 
+     * @param browserType Browser type (chrome, firefox, edge, safari)
+     * @return WebDriver instance
+     */
+    public static WebDriver getDriver(String browserType) {
+        // Check if driver already exists for current thread
+        WebDriver driver = driverThreadLocal.get();
+        
+        if (driver != null) {
+            return driver;
+        }
+        
+        // Create new driver
+        driver = createDriver(browserType);
+        
+        // Configure driver
+        configureDriver(driver);
+        
+        // Store driver
+        driverThreadLocal.set(driver);
+        allDrivers.put(Thread.currentThread().getId(), driver);
+        
+        return driver;
+    }
+    
+    /**
+     * Create new WebDriver instance
+     * 
+     * @param browserType Browser type (chrome, firefox, edge, safari)
+     * @return WebDriver instance
+     */
+    private static WebDriver createDriver(String browserType) {
+        ConfigurationManager configManager = ConfigurationManager.getInstance();
+        boolean headless = configManager.isHeadless();
+        
+        switch (browserType.toLowerCase()) {
+            case "chrome":
+                return createChromeDriver(headless);
+            case "firefox":
+                return createFirefoxDriver(headless);
+            case "edge":
+                return createEdgeDriver(headless);
+            case "safari":
+                return createSafariDriver();
+            default:
+                System.out.println("Unsupported browser type: " + browserType + ", defaulting to Chrome");
+                return createChromeDriver(headless);
+        }
+    }
+    
+    /**
+     * Create Chrome WebDriver instance
+     * 
+     * @param headless true for headless mode
+     * @return ChromeDriver instance
+     */
+    private static WebDriver createChromeDriver(boolean headless) {
+        ChromeOptions options = new ChromeOptions();
+        
+        // Common options
+        options.addArguments("--start-maximized");
+        options.addArguments("--disable-notifications");
+        options.addArguments("--disable-popup-blocking");
+        options.addArguments("--disable-infobars");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--no-sandbox");
+        
+        // Experimental options
+        Map<String, Object> prefs = new HashMap<>();
+        prefs.put("credentials_enable_service", false);
+        prefs.put("profile.password_manager_enabled", false);
+        options.setExperimentalOption("prefs", prefs);
+        options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
+        
+        // Headless mode
+        if (headless) {
+            options.addArguments("--headless=new");
+            options.addArguments("--window-size=1920,1080");
+        }
+        
+        return new ChromeDriver(options);
+    }
+    
+    /**
+     * Create Firefox WebDriver instance
+     * 
+     * @param headless true for headless mode
+     * @return FirefoxDriver instance
+     */
+    private static WebDriver createFirefoxDriver(boolean headless) {
+        FirefoxOptions options = new FirefoxOptions();
+        
+        // Common options
+        options.addArguments("-width=1920");
+        options.addArguments("-height=1080");
+        
+        // Headless mode
+        if (headless) {
+            options.addArguments("--headless");
+        }
+        
+        return new FirefoxDriver(options);
+    }
+    
+    /**
+     * Create Edge WebDriver instance
+     * 
+     * @param headless true for headless mode
+     * @return EdgeDriver instance
+     */
+    private static WebDriver createEdgeDriver(boolean headless) {
+        EdgeOptions options = new EdgeOptions();
+        
+        // Common options
+        options.addArguments("--start-maximized");
+        options.addArguments("--disable-notifications");
+        options.addArguments("--disable-popup-blocking");
+        options.addArguments("--disable-infobars");
+        
+        // Experimental options
+        Map<String, Object> prefs = new HashMap<>();
+        prefs.put("credentials_enable_service", false);
+        prefs.put("profile.password_manager_enabled", false);
+        options.setExperimentalOption("prefs", prefs);
+        options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
+        
+        // Headless mode
+        if (headless) {
+            options.addArguments("--headless=new");
+            options.addArguments("--window-size=1920,1080");
+        }
+        
+        return new EdgeDriver(options);
+    }
+    
+    /**
+     * Create Safari WebDriver instance
+     * 
+     * @return SafariDriver instance
+     */
+    private static WebDriver createSafariDriver() {
+        SafariOptions options = new SafariOptions();
+        
+        // Safari doesn't support headless mode
+        // Configure other options
+        options.setAutomaticInspection(false);
+        
+        return new SafariDriver(options);
+    }
+    
+    /**
+     * Configure WebDriver instance
+     * 
+     * @param driver WebDriver instance
+     */
+    private static void configureDriver(WebDriver driver) {
+        ConfigurationManager configManager = ConfigurationManager.getInstance();
+        
+        // Set timeouts
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(configManager.getImplicitWaitTimeout()));
+        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(configManager.getPageLoadTimeout()));
+        driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(configManager.getPageLoadTimeout()));
+        
+        // Maximize window
+        driver.manage().window().maximize();
+    }
+    
+    /**
+     * Quit WebDriver instance for current thread
+     */
+    public static void quitDriver() {
+        WebDriver driver = driverThreadLocal.get();
+        
+        if (driver != null) {
+            try {
+                driver.quit();
+            } catch (Exception e) {
+                System.err.println("Error quitting WebDriver: " + e.getMessage());
+            } finally {
+                driverThreadLocal.remove();
+                allDrivers.remove(Thread.currentThread().getId());
+            }
+        }
+    }
+    
+    /**
+     * Quit all WebDriver instances
+     */
+    public static void quitAllDrivers() {
+        for (Map.Entry<Long, WebDriver> entry : allDrivers.entrySet()) {
+            try {
+                WebDriver driver = entry.getValue();
+                if (driver != null) {
+                    driver.quit();
+                }
+            } catch (Exception e) {
+                System.err.println("Error quitting WebDriver for thread " + entry.getKey() + ": " + e.getMessage());
+            }
+        }
+        
+        allDrivers.clear();
+        driverThreadLocal.remove();
+    }
+    
+    /**
+     * Check if WebDriver instance exists for current thread
+     * 
+     * @return true if WebDriver instance exists
+     */
+    public static boolean hasDriver() {
+        return driverThreadLocal.get() != null;
+    }
+    
+    /**
+     * Get current browser name
+     * 
+     * @return Current browser name
+     */
+    public static String getCurrentBrowserName() {
+        WebDriver driver = driverThreadLocal.get();
+        
+        if (driver == null) {
+            return "unknown";
+        }
+        
+        String browserName = driver.getClass().getSimpleName();
+        return browserName.replace("Driver", "").toLowerCase();
+    }
+}
+
+
+package com.cstestforge.framework.utils;
+
+import com.cstestforge.framework.config.ConfigurationManager;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+/**
+ * Manager for taking and saving screenshots.
+ */
+public class CSScreenshotManager {
+
+    private final WebDriver driver;
+    private final String screenshotDir;
+    private final ConfigurationManager configManager;
+    
+    /**
+     * Constructor
+     * 
+     * @param driver WebDriver instance
+     */
+    public CSScreenshotManager(WebDriver driver) {
+        this.driver = driver;
+        this.configManager = ConfigurationManager.getInstance();
+        
+        // Get screenshot directory from configuration
+        String baseDir = configManager.getScreenshotPath();
+        
+        // Create timestamp subdirectory
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss");
+        String timestamp = dateFormat.format(new Date());
+        
+        this.screenshotDir = baseDir + File.separator + timestamp;
+        
+        // Create directory
+        createScreenshotDirectory();
+    }
+    
+    /**
+     * Create screenshot directory
+     */
+    private void createScreenshotDirectory() {
+        try {
+            Files.createDirectories(Paths.get(screenshotDir));
+        } catch (IOException e) {
+            System.err.println("Error creating screenshot directory: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Capture screenshot of current page
+     * 
+     * @param name Screenshot name
+     * @return Path to saved screenshot
+     */
+    public String captureScreenshot(String name) {
+        if (driver == null) {
+            System.err.println("WebDriver is null, cannot capture screenshot");
+            return null;
+        }
+        
+        if (!(driver instanceof TakesScreenshot)) {
+            System.err.println("WebDriver does not support taking screenshots");
+            return null;
+        }
+        
+        try {
+            // Take screenshot
+            TakesScreenshot screenshotDriver = (TakesScreenshot) driver;
+            File screenshot = screenshotDriver.getScreenshotAs(OutputType.FILE);
+            
+            // Generate filename
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS");
+            String timestamp = dateFormat.format(new Date());
+            String fileName = sanitizeFileName(name) + "_" + timestamp + ".png";
+            String filePath = screenshotDir + File.separator + fileName;
+            
+            // Save screenshot
+            Files.copy(screenshot.toPath(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
+            
+            return filePath;
+        } catch (Exception e) {
+            System.err.println("Error capturing screenshot: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Capture screenshot of specific element
+     * 
+     * @param element WebElement to capture
+     * @param name Screenshot name
+     * @return Path to saved screenshot
+     */
+    public String captureElementScreenshot(WebElement element, String name) {
+        if (element == null) {
+            System.err.println("WebElement is null, cannot capture screenshot");
+            return null;
+        }
+        
+        try {
+            // Check if element supports taking screenshots
+            if (element instanceof TakesScreenshot) {
+                TakesScreenshot screenshotElement = (TakesScreenshot) element;
+                File screenshot = screenshotElement.getScreenshotAs(OutputType.FILE);
+                
+                // Generate filename
+                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss_SSS");
+                String timestamp = dateFormat.format(new Date());
+                String fileName = "element_" + sanitizeFileName(name) + "_" + timestamp + ".png";
+                String filePath = screenshotDir + File.separator + fileName;
+                
+                // Save screenshot
+                Files.copy(screenshot.toPath(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
+                
+                return filePath;
+            } else {
+                // Fall back to full page screenshot with element highlighted
+                highlightElement(element);
+                String filePath = captureScreenshot("highlighted_" + name);
+                unhighlightElement(element);
+                
+                return filePath;
+            }
+        } catch (Exception e) {
+            System.err.println("Error capturing element screenshot: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Highlight an element on the page
+     * 
+     * @param element WebElement to highlight
+     */
+    private void highlightElement(WebElement element) {
+        if (driver != null && element != null && configManager.isElementHighlightEnabled()) {
+            try {
+                org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+                js.executeScript(
+                    "arguments[0].setAttribute('style', 'border: 2px solid red; background-color: yellow;');", 
+                    element
+                );
+            } catch (Exception e) {
+                // Ignore highlight errors
+            }
+        }
+    }
+    
+    /**
+     * Remove highlight from element
+     * 
+     * @param element WebElement to unhighlight
+     */
+    private void unhighlightElement(WebElement element) {
+        if (driver != null && element != null) {
+            try {
+                org.openqa.selenium.JavascriptExecutor js = (org.openqa.selenium.JavascriptExecutor) driver;
+                js.executeScript(
+                    "arguments[0].setAttribute('style', '');", 
+                    element
+                );
+            } catch (Exception e) {
+                // Ignore unhighlight errors
+            }
+        }
+    }
+    
+    /**
+     * Sanitize filename to remove invalid characters
+     * 
+     * @param name Original filename
+     * @return Sanitized filename
+     */
+    private String sanitizeFileName(String name) {
+        if (name == null || name.isEmpty()) {
+            return "screenshot";
+        }
+        
+        // Remove invalid file characters
+        return name.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+    
+    /**
+     * Get screenshot as Base64 encoded string
+     * 
+     * @return Base64 encoded screenshot
+     */
+    public String getScreenshotAsBase64() {
+        if (driver == null || !(driver instanceof TakesScreenshot)) {
+            return null;
+        }
+        
+        try {
+            TakesScreenshot screenshotDriver = (TakesScreenshot) driver;
+            return screenshotDriver.getScreenshotAs(OutputType.BASE64);
+        } catch (Exception e) {
+            System.err.println("Error getting screenshot as Base64: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Get screenshot as bytes
+     * 
+     * @return Screenshot bytes
+     */
+    public byte[] getScreenshotAsBytes() {
+        if (driver == null || !(driver instanceof TakesScreenshot)) {
+            return null;
+        }
+        
+        try {
+            TakesScreenshot screenshotDriver = (TakesScreenshot) driver;
+            return screenshotDriver.getScreenshotAs(OutputType.BYTES);
+        } catch (Exception e) {
+            System.err.println("Error getting screenshot as bytes: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Capture screenshot with timestamp
+     * 
+     * @return Path to saved screenshot
+     */
+    public String captureTimestampedScreenshot() {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMdd_HHmmss");
+        String timestamp = dateFormat.format(new Date());
+        return captureScreenshot("screenshot_" + timestamp);
+    }
+    
+    /**
+     * Get screenshot directory
+     * 
+     * @return Screenshot directory
+     */
+    public String getScreenshotDirectory() {
+        return screenshotDir;
+    }
+}
+
+
+package com.cstestforge.service.project;
+
+import com.cstestforge.model.test.GeneratedTest;
+import com.cstestforge.model.recorder.ProgrammingLanguage;
+import com.cstestforge.model.recorder.TestingFramework;
+import com.cstestforge.model.recorder.TestType;
+import com.cstestforge.model.project.ProjectStructure;
+import org.springframework.stereotype.Service;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Service for file system operations related to projects
+ */
+@Service
+public class FileSystemService {
+
+    private static final String TEMP_DIR = System.getProperty("java.io.tmpdir");
+    private static final String PROJECT_BASE_DIR = "cstestforge_projects";
+    private static final Map<String, ProjectStructure> PROJECT_STRUCTURES = initProjectStructures();
+    private static final int BUFFER_SIZE = 4096;
+    
+    /**
+     * Initialize project structure templates for different technology stacks
+     */
+    private static Map<String, ProjectStructure> initProjectStructures() {
+        Map<String, ProjectStructure> structures = new HashMap<>();
+        
+        // Java + Selenium + TestNG
+        ProjectStructure javaSeleniumTestNG = new ProjectStructure();
+        javaSeleniumTestNG.setDirectories(List.of(
+            "src/main/java",
+            "src/main/resources",
+            "src/test/java",
+            "src/test/resources",
+            "test-data",
+            "reports"
+        ));
+        javaSeleniumTestNG.setBasePackage("com.cstestforge");
+        javaSeleniumTestNG.setFrameworkFiles(Map.of(
+            "pom.xml", "framework/java/selenium/testng/pom.xml",
+            "src/main/java/com/cstestforge/framework/core/CSBaseTest.java", "framework/java/selenium/testng/CSBaseTest.java",
+            "src/main/java/com/cstestforge/framework/core/CSBasePage.java", "framework/java/selenium/testng/CSBasePage.java",
+            "src/main/java/com/cstestforge/framework/utils/CSElement.java", "framework/java/selenium/testng/CSElement.java",
+            "src/main/java/com/cstestforge/framework/utils/CSWaitStrategy.java", "framework/java/selenium/testng/CSWaitStrategy.java",
+            "src/main/java/com/cstestforge/framework/annotations/CSFindBy.java", "framework/java/selenium/testng/CSFindBy.java",
+            "src/main/java/com/cstestforge/framework/reporting/CSReporter.java", "framework/java/selenium/testng/CSReporter.java",
+            "src/main/resources/log4j2.xml", "framework/java/selenium/testng/log4j2.xml",
+            "src/test/resources/testng.xml", "framework/java/selenium/testng/testng.xml"
+        ));
+        structures.put("JAVA_SELENIUM_TESTNG", javaSeleniumTestNG);
+        
+        // Java + Selenium + BDD
+        ProjectStructure javaSeleniumBDD = new ProjectStructure();
+        javaSeleniumBDD.setDirectories(List.of(
+            "src/main/java",
+            "src/main/resources",
+            "src/test/java",
+            "src/test/resources/features",
+            "test-data",
+            "reports"
+        ));
+        javaSeleniumBDD.setBasePackage("com.cstestforge");
+        javaSeleniumBDD.setFrameworkFiles(Map.of(
+            "pom.xml", "framework/java/selenium/bdd/pom.xml",
+            "src/main/java/com/cstestforge/framework/core/CSBaseTest.java", "framework/java/selenium/bdd/CSBaseTest.java",
+            "src/main/java/com/cstestforge/framework/core/CSBasePage.java", "framework/java/selenium/bdd/CSBasePage.java",
+            "src/main/java/com/cstestforge/framework/utils/CSElement.java", "framework/java/selenium/bdd/CSElement.java",
+            "src/main/java/com/cstestforge/framework/utils/CSWaitStrategy.java", "framework/java/selenium/bdd/CSWaitStrategy.java",
+            "src/main/java/com/cstestforge/framework/annotations/CSFindBy.java", "framework/java/selenium/bdd/CSFindBy.java",
+            "src/main/java/com/cstestforge/framework/reporting/CSReporter.java", "framework/java/selenium/bdd/CSReporter.java",
+            "src/test/java/com/cstestforge/steps/CommonSteps.java", "framework/java/selenium/bdd/CommonSteps.java",
+            "src/test/java/com/cstestforge/runners/TestRunner.java", "framework/java/selenium/bdd/TestRunner.java",
+            "src/main/resources/log4j2.xml", "framework/java/selenium/bdd/log4j2.xml",
+            "src/test/resources/cucumber.properties", "framework/java/selenium/bdd/cucumber.properties"
+        ));
+        structures.put("JAVA_SELENIUM_BDD", javaSeleniumBDD);
+        
+        // Java + Playwright + TestNG
+        ProjectStructure javaPlaywrightTestNG = new ProjectStructure();
+        javaPlaywrightTestNG.setDirectories(List.of(
+            "src/main/java",
+            "src/main/resources",
+            "src/test/java",
+            "src/test/resources",
+            "test-data",
+            "reports"
+        ));
+        javaPlaywrightTestNG.setBasePackage("com.cstestforge");
+        javaPlaywrightTestNG.setFrameworkFiles(Map.of(
+            "pom.xml", "framework/java/playwright/testng/pom.xml",
+            "src/main/java/com/cstestforge/framework/core/CSBaseTest.java", "framework/java/playwright/testng/CSBaseTest.java",
+            "src/main/java/com/cstestforge/framework/core/CSBasePage.java", "framework/java/playwright/testng/CSBasePage.java",
+            "src/main/java/com/cstestforge/framework/utils/CSElement.java", "framework/java/playwright/testng/CSElement.java",
+            "src/main/java/com/cstestforge/framework/annotations/CSFindBy.java", "framework/java/playwright/testng/CSFindBy.java",
+            "src/main/java/com/cstestforge/framework/reporting/CSReporter.java", "framework/java/playwright/testng/CSReporter.java",
+            "src/main/resources/log4j2.xml", "framework/java/playwright/testng/log4j2.xml",
+            "src/test/resources/testng.xml", "framework/java/playwright/testng/testng.xml"
+        ));
+        structures.put("JAVA_PLAYWRIGHT_TESTNG", javaPlaywrightTestNG);
+        
+        // Java + Playwright + BDD
+        ProjectStructure javaPlaywrightBDD = new ProjectStructure();
+        javaPlaywrightBDD.setDirectories(List.of(
+            "src/main/java",
+            "src/main/resources",
+            "src/test/java",
+            "src/test/resources/features",
+            "test-data",
+            "reports"
+        ));
+        javaPlaywrightBDD.setBasePackage("com.cstestforge");
+        javaPlaywrightBDD.setFrameworkFiles(Map.of(
+            "pom.xml", "framework/java/playwright/bdd/pom.xml",
+            "src/main/java/com/cstestforge/framework/core/CSBaseTest.java", "framework/java/playwright/bdd/CSBaseTest.java",
+            "src/main/java/com/cstestforge/framework/core/CSBasePage.java", "framework/java/playwright/bdd/CSBasePage.java",
+            "src/main/java/com/cstestforge/framework/utils/CSElement.java", "framework/java/playwright/bdd/CSElement.java",
+            "src/main/java/com/cstestforge/framework/annotations/CSFindBy.java", "framework/java/playwright/bdd/CSFindBy.java",
+            "src/main/java/com/cstestforge/framework/reporting/CSReporter.java", "framework/java/playwright/bdd/CSReporter.java",
+            "src/test/java/com/cstestforge/steps/CommonSteps.java", "framework/java/playwright/bdd/CommonSteps.java",
+            "src/test/java/com/cstestforge/runners/TestRunner.java", "framework/java/playwright/bdd/TestRunner.java",
+            "src/main/resources/log4j2.xml", "framework/java/playwright/bdd/log4j2.xml",
+            "src/test/resources/cucumber.properties", "framework/java/playwright/bdd/cucumber.properties"
+        ));
+        structures.put("JAVA_PLAYWRIGHT_BDD", javaPlaywrightBDD);
+        
+        // TypeScript + Playwright + TestNG-style
+        ProjectStructure tsPlaywrightTestNG = new ProjectStructure();
+        tsPlaywrightTestNG.setDirectories(List.of(
+            "src",
+            "tests",
+            "test-data",
+            "reports"
+        ));
+        tsPlaywrightTestNG.setBasePackage("");
+        tsPlaywrightTestNG.setFrameworkFiles(Map.of(
+            "package.json", "framework/typescript/playwright/testng/package.json",
+            "tsconfig.json", "framework/typescript/playwright/testng/tsconfig.json",
+            "playwright.config.ts", "framework/typescript/playwright/testng/playwright.config.ts",
+            "src/framework/CSBasePage.ts", "framework/typescript/playwright/testng/CSBasePage.ts",
+            "src/framework/CSElement.ts", "framework/typescript/playwright/testng/CSElement.ts",
+            "src/framework/CSReporter.ts", "framework/typescript/playwright/testng/CSReporter.ts",
+            "src/framework/CSWaitStrategy.ts", "framework/typescript/playwright/testng/CSWaitStrategy.ts",
+            ".gitignore", "framework/typescript/playwright/testng/.gitignore"
+        ));
+        structures.put("TYPESCRIPT_PLAYWRIGHT_TESTNG", tsPlaywrightTestNG);
+        
+        // TypeScript + Playwright + BDD
+        ProjectStructure tsPlaywrightBDD = new ProjectStructure();
+        tsPlaywrightBDD.setDirectories(List.of(
+            "src",
+            "features",
+            "step-definitions",
+            "test-data",
+            "reports"
+        ));
+        tsPlaywrightBDD.setBasePackage("");
+        tsPlaywrightBDD.setFrameworkFiles(Map.of(
+            "package.json", "framework/typescript/playwright/bdd/package.json",
+            "tsconfig.json", "framework/typescript/playwright/bdd/tsconfig.json",
+            "playwright.config.ts", "framework/typescript/playwright/bdd/playwright.config.ts",
+            "cucumber.js", "framework/typescript/playwright/bdd/cucumber.js",
+            "src/framework/CSBasePage.ts", "framework/typescript/playwright/bdd/CSBasePage.ts",
+            "src/framework/CSElement.ts", "framework/typescript/playwright/bdd/CSElement.ts",
+            "src/framework/CSReporter.ts", "framework/typescript/playwright/bdd/CSReporter.ts",
+            "src/framework/CSWaitStrategy.ts", "framework/typescript/playwright/bdd/CSWaitStrategy.ts",
+            "step-definitions/common-steps.ts", "framework/typescript/playwright/bdd/common-steps.ts",
+            ".gitignore", "framework/typescript/playwright/bdd/.gitignore"
+        ));
+        structures.put("TYPESCRIPT_PLAYWRIGHT_BDD", tsPlaywrightBDD);
+        
+        return structures;
+    }
+    
+    /**
+     * Save a generated test to the file system
+     * 
+     * @param test Generated test
+     * @return true if successful
+     */
+    public boolean saveTestToFileSystem(GeneratedTest test) {
+        try {
+            // Create project name from test name
+            String projectName = test.getName().replaceAll("[^a-zA-Z0-9-_]", "_");
+            
+            // Generate project key based on technology stack
+            String projectKey = getProjectKey(test.getLanguage(), test.getFramework(), test.getTestType());
+            
+            // Get project structure for the technology stack
+            ProjectStructure structure = PROJECT_STRUCTURES.get(projectKey);
+            if (structure == null) {
+                throw new IllegalArgumentException("Unsupported technology stack: " + projectKey);
+            }
+            
+            // Create temp project directory
+            String projectDir = TEMP_DIR + File.separator + PROJECT_BASE_DIR + File.separator + projectName;
+            createDirectory(projectDir);
+            
+            // Create project directories
+            for (String dir : structure.getDirectories()) {
+                createDirectory(projectDir + File.separator + dir);
+            }
+            
+            // Copy framework files
+            for (Map.Entry<String, String> entry : structure.getFrameworkFiles().entrySet()) {
+                String destPath = projectDir + File.separator + entry.getKey();
+                String sourcePath = entry.getValue();
+                
+                // Ensure parent directory exists
+                File destFile = new File(destPath);
+                destFile.getParentFile().mkdirs();
+                
+                // Copy file from classpath resource
+                copyResource(sourcePath, destPath);
+            }
+            
+            // Save test code based on test type
+            String testFilePath = getTestFilePath(projectDir, test, structure);
+            saveToFile(testFilePath, test.getCode());
+            
+            // Update file path in test object
+            test.setFilePath(testFilePath);
+            
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Get project key based on technology stack
+     * 
+     * @param language Programming language
+     * @param framework Testing framework
+     * @param testType Test type
+     * @return Project key
+     */
+    private String getProjectKey(Object language, Object framework, Object testType) {
+        return language + "_" + framework + "_" + testType;
+    }
+    
+    /**
+     * Get file path for saving the test
+     * 
+     * @param projectDir Project directory
+     * @param test Generated test
+     * @param structure Project structure
+     * @return Test file path
+     */
+    private String getTestFilePath(String projectDir, GeneratedTest test, ProjectStructure structure) {
+        // Package directories
+        String packageDirs = "";
+        if (structure.getBasePackage() != null && !structure.getBasePackage().isEmpty()) {
+            packageDirs = structure.getBasePackage().replace('.', File.separatorChar) + File.separator;
+        }
+        
+        // Class name
+        String className = test.getClassName();
+        if (className == null || className.isEmpty()) {
+            // Generate class name from test name
+            className = test.getName().replaceAll("[^a-zA-Z0-9]", "");
+            // Ensure first letter is capitalized
+            className = className.substring(0, 1).toUpperCase() + className.substring(1);
+            
+            // Add Test or Tests suffix if not present
+            if (!className.endsWith("Test") && !className.endsWith("Tests")) {
+                className += "Test";
+            }
+        }
+        
+        // File path based on test type and language
+        String filePath;
+        if (test.getLanguage().equals(ProgrammingLanguage.JAVA)) {
+            if (test.getTestType().equals(TestType.BDD)) {
+                // BDD Feature file
+                String featureName = className.replace("Test", "").replace("Tests", "");
+                filePath = projectDir + File.separator + "src/test/resources/features" + File.separator + featureName + ".feature";
+            } else {
+                // TestNG test class
+                filePath = projectDir + File.separator + "src/test/java" + File.separator + packageDirs + "tests" + File.separator + className + ".java";
+            }
+        } else {
+            // TypeScript
+            if (test.getTestType().equals(TestType.BDD)) {
+                // BDD Feature file
+                String featureName = className.replace("Test", "").replace("Tests", "");
+                filePath = projectDir + File.separator + "features" + File.separator + featureName + ".feature";
+            } else {
+                // TestNG-style test
+                filePath = projectDir + File.separator + "tests" + File.separator + className + ".spec.ts";
+            }
+        }
+        
+        return filePath;
+    }
+    
+    /**
+     * Create directory
+     * 
+     * @param dirPath Directory path
+     */
+    private void createDirectory(String dirPath) {
+        File dir = new File(dirPath);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+    }
+    
+    /**
+     * Save content to file
+     * 
+     * @param filePath File path
+     * @param content File content
+     * @throws IOException if file cannot be written
+     */
+    private void saveToFile(String filePath, String content) throws IOException {
+        // Ensure parent directory exists
+        File file = new File(filePath);
+        file.getParentFile().mkdirs();
+        
+        // Write content to file
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, StandardCharsets.UTF_8))) {
+            writer.write(content);
+        }
+    }
+    
+    /**
+     * Copy resource from classpath to file
+     * 
+     * @param resourcePath Resource path
+     * @param destPath Destination path
+     * @throws IOException if resource cannot be copied
+     */
+    private void copyResource(String resourcePath, String destPath) throws IOException {
+        // Get resource from classpath
+        ClassLoader classLoader = getClass().getClassLoader();
+        try (var inputStream = classLoader.getResourceAsStream(resourcePath)) {
+            if (inputStream == null) {
+                throw new IOException("Resource not found: " + resourcePath);
+            }
+            
+            // Ensure parent directory exists
+            File destFile = new File(destPath);
+            destFile.getParentFile().mkdirs();
+            
+            // Copy resource to file
+            Files.copy(inputStream, Paths.get(destPath), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+    
+    /**
+     * Export project to zip file
+     * 
+     * @param projectDir Project directory
+     * @param outputPath Output zip file path
+     * @return true if successful
+     */
+    public boolean exportProjectToZip(String projectDir, String outputPath) {
+        try {
+            File projectDirFile = new File(projectDir);
+            if (!projectDirFile.exists() || !projectDirFile.isDirectory()) {
+                throw new IllegalArgumentException("Project directory does not exist: " + projectDir);
+            }
+            
+            // Create output directory if it doesn't exist
+            File outputFile = new File(outputPath);
+            outputFile.getParentFile().mkdirs();
+            
+            // Create zip file
+            try (ZipOutputStream zipOut = new ZipOutputStream(new FileOutputStream(outputPath))) {
+                zipDirectory(projectDirFile, projectDirFile.getName(), zipOut);
+            }
+            
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Zip directory
+     * 
+     * @param folder Folder to zip
+     * @param parentFolder Parent folder name
+     * @param zipOut Zip output stream
+     * @throws IOException if folder cannot be zipped
+     */
+    private void zipDirectory(File folder, String parentFolder, ZipOutputStream zipOut) throws IOException {
+        File[] files = folder.listFiles();
+        if (files == null) {
+            return;
+        }
+        
+        byte[] buffer = new byte[BUFFER_SIZE];
+        
+        for (File file : files) {
+            if (file.isDirectory()) {
+                zipDirectory(file, parentFolder + "/" + file.getName(), zipOut);
+                continue;
+            }
+            
+            try (FileInputStream fis = new FileInputStream(file)) {
+                String entryPath = parentFolder + "/" + file.getName();
+                ZipEntry zipEntry = new ZipEntry(entryPath);
+                zipOut.putNextEntry(zipEntry);
+                
+                int length;
+                while ((length = fis.read(buffer)) > 0) {
+                    zipOut.write(buffer, 0, length);
+                }
+                
+                zipOut.closeEntry();
+            }
+        }
+    }
+    
+    /**
+     * Import project from zip file
+     * 
+     * @param zipFilePath Zip file path
+     * @param targetDir Target directory
+     * @return Project directory path
+     * @throws IOException if project cannot be imported
+     */
+    public String importProjectFromZip(String zipFilePath, String targetDir) throws IOException {
+        File zipFile = new File(zipFilePath);
+        if (!zipFile.exists() || !zipFile.isFile()) {
+            throw new IllegalArgumentException("Zip file does not exist: " + zipFilePath);
+        }
+        
+        // Create target directory if it doesn't exist
+        File targetDirFile = new File(targetDir);
+        if (!targetDirFile.exists()) {
+            targetDirFile.mkdirs();
+        }
+        
+        // Extract zip file
+        try (ZipInputStream zipIn = new ZipInputStream(new FileInputStream(zipFile))) {
+            ZipEntry entry = zipIn.getNextEntry();
+            
+            String projectName = null;
+            
+            // Find root directory (first entry)
+            while (entry != null && projectName == null) {
+                String entryName = entry.getName();
+                if (entryName.indexOf('/') > 0) {
+                    projectName = entryName.substring(0, entryName.indexOf('/'));
+                }
+                entry = zipIn.getNextEntry();
+            }
+            
+            // Reset zip stream
+            zipIn.close();
+            
+            // Extract files
+            try (ZipInputStream zipIn2 = new ZipInputStream(new FileInputStream(zipFile))) {
+                byte[] buffer = new byte[BUFFER_SIZE];
+                
+                ZipEntry entry2 = zipIn2.getNextEntry();
+                while (entry2 != null) {
+                    String filePath = targetDir + File.separator + entry2.getName();
+                    
+                    if (!entry2.isDirectory()) {
+                        // Create parent directories
+                        new File(filePath).getParentFile().mkdirs();
+                        
+                        // Extract file
+                        try (FileOutputStream fos = new FileOutputStream(filePath)) {
+                            int length;
+                            while ((length = zipIn2.read(buffer)) > 0) {
+                                fos.write(buffer, 0, length);
+                            }
+                        }
+                    } else {
+                        // Create directory
+                        new File(filePath).mkdirs();
+                    }
+                    
+                    zipIn2.closeEntry();
+                    entry2 = zipIn2.getNextEntry();
+                }
+            }
+            
+            // Return project directory path
+            return targetDir + File.separator + projectName;
+        }
+    }
+    
+    /**
+     * Delete project directory
+     * 
+     * @param projectDir Project directory
+     * @return true if successful
+     */
+    public boolean deleteProject(String projectDir) {
+        try {
+            File projectDirFile = new File(projectDir);
+            if (!projectDirFile.exists()) {
+                return true; // Already deleted
+            }
+            
+            // Delete all files and subdirectories
+            deleteDirectory(projectDirFile);
+            
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Delete directory recursively
+     * 
+     * @param directory Directory to delete
+     * @throws IOException if directory cannot be deleted
+     */
+    private void deleteDirectory(File directory) throws IOException {
+        if (!directory.exists()) {
+            return;
+        }
+        
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectory(file);
+                } else {
+                    file.delete();
+                }
+            }
+        }
+        
+        directory.delete();
+    }
+    
+    /**
+     * Find test files in project
+     * 
+     * @param projectDir Project directory
+     * @return List of test file paths
+     */
+    public List<String> findTestFiles(String projectDir) {
+        List<String> testFiles = new ArrayList<>();
+        File projectDirFile = new File(projectDir);
+        
+        if (!projectDirFile.exists() || !projectDirFile.isDirectory()) {
+            return testFiles;
+        }
+        
+        // Walk through project directory and find test files
+        walk(projectDirFile, testFiles);
+        
+        return testFiles;
+    }
+    
+    /**
+     * Walk through directory and find test files
+     * 
+     * @param directory Directory to walk through
+     * @param testFiles List to add test files to
+     */
+    private void walk(File directory, List<String> testFiles) {
+        File[] files = directory.listFiles();
+        if (files == null) {
+            return;
+        }
+        
+        for (File file : files) {
+            if (file.isDirectory()) {
+                walk(file, testFiles);
+            } else {
+                String fileName = file.getName();
+                // Java test files
+                if (fileName.endsWith("Test.java") || fileName.endsWith("Tests.java")) {
+                    testFiles.add(file.getAbsolutePath());
+                }
+                // TypeScript test files
+                else if (fileName.endsWith(".spec.ts") || fileName.endsWith(".test.ts")) {
+                    testFiles.add(file.getAbsolutePath());
+                }
+                // Feature files
+                else if (fileName.endsWith(".feature")) {
+                    testFiles.add(file.getAbsolutePath());
+                }
+            }
+        }
+    }
+    
+    /**
+     * Read file content
+     * 
+     * @param filePath File path
+     * @return File content
+     * @throws IOException if file cannot be read
+     */
+    public String readFile(String filePath) throws IOException {
+        return Files.readString(Paths.get(filePath));
+    }
+    
+    /**
+     * Write file content
+     * 
+     * @param filePath File path
+     * @param content File content
+     * @throws IOException if file cannot be written
+     */
+    public void writeFile(String filePath, String content) throws IOException {
+        Files.writeString(Paths.get(filePath), content);
+    }
+    
+    /**
+     * Get project structures
+     * 
+     * @return Map of project structures by key
+     */
+    public Map<String, ProjectStructure> getProjectStructures() {
+        return new HashMap<>(PROJECT_STRUCTURES);
+    }
+    
+    /**
+     * Get base project directory
+     * 
+     * @return Base project directory
+     */
+    public String getBaseProjectDirectory() {
+        return TEMP_DIR + File.separator + PROJECT_BASE_DIR;
+    }
+    
+    /**
+     * Create project directory
+     * 
+     * @param projectName Project name
+     * @return Project directory path
+     */
+    public String createProjectDirectory(String projectName) {
+        String projectDir = getBaseProjectDirectory() + File.separator + projectName;
+        createDirectory(projectDir);
+        return projectDir;
+    }
+}
+
+
+package com.cstestforge.model.project;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Represents the structure of a test automation project.
+ * Used when generating framework code and exporting projects.
+ */
+public class ProjectStructure {
+
+    /**
+     * Directories to create in the project
+     */
+    private List<String> directories = new ArrayList<>();
+    
+    /**
+     * Base package for Java projects
+     */
+    private String basePackage;
+    
+    /**
+     * Framework files to include in the project
+     * Key: Destination path in project
+     * Value: Source path in classpath resources
+     */
+    private Map<String, String> frameworkFiles = new HashMap<>();
+    
+    /**
+     * Default constructor
+     */
+    public ProjectStructure() {
+    }
+    
+    /**
+     * Constructor with parameters
+     * 
+     * @param directories Directories to create
+     * @param basePackage Base package
+     * @param frameworkFiles Framework files
+     */
+    public ProjectStructure(List<String> directories, String basePackage, Map<String, String> frameworkFiles) {
+        this.directories = directories;
+        this.basePackage = basePackage;
+        this.frameworkFiles = frameworkFiles;
+    }
+    
+    /**
+     * Get directories
+     * 
+     * @return Directories
+     */
+    public List<String> getDirectories() {
+        return directories;
+    }
+    
+    /**
+     * Set directories
+     * 
+     * @param directories Directories
+     */
+    public void setDirectories(List<String> directories) {
+        this.directories = directories;
+    }
+    
+    /**
+     * Get base package
+     * 
+     * @return Base package
+     */
+    public String getBasePackage() {
+        return basePackage;
+    }
+    
+    /**
+     * Set base package
+     * 
+     * @param basePackage Base package
+     */
+    public void setBasePackage(String basePackage) {
+        this.basePackage = basePackage;
+    }
+    
+    /**
+     * Get framework files
+     * 
+     * @return Framework files
+     */
+    public Map<String, String> getFrameworkFiles() {
+        return frameworkFiles;
+    }
+    
+    /**
+     * Set framework files
+     * 
+     * @param frameworkFiles Framework files
+     */
+    public void setFrameworkFiles(Map<String, String> frameworkFiles) {
+        this.frameworkFiles = frameworkFiles;
+    }
+    
+    /**
+     * Add directory
+     * 
+     * @param directory Directory
+     */
+    public void addDirectory(String directory) {
+        this.directories.add(directory);
+    }
+    
+    /**
+     * Add framework file
+     * 
+     * @param destPath Destination path
+     * @param sourcePath Source path
+     */
+    public void addFrameworkFile(String destPath, String sourcePath) {
+        this.frameworkFiles.put(destPath, sourcePath);
+    }
+    
+    /**
+     * Create a copy of this structure
+     * 
+     * @return Copy of this structure
+     */
+    public ProjectStructure copy() {
+        ProjectStructure copy = new ProjectStructure();
+        copy.setDirectories(new ArrayList<>(this.directories));
+        copy.setBasePackage(this.basePackage);
+        copy.setFrameworkFiles(new HashMap<>(this.frameworkFiles));
+        return copy;
+    }
+    
+    /**
+     * Merge with another structure
+     * 
+     * @param other Other structure
+     * @return Merged structure
+     */
+    public ProjectStructure merge(ProjectStructure other) {
+        ProjectStructure merged = this.copy();
+        
+        // Add directories from other structure
+        for (String directory : other.getDirectories()) {
+            if (!merged.getDirectories().contains(directory)) {
+                merged.addDirectory(directory);
+            }
+        }
+        
+        // Add framework files from other structure
+        merged.getFrameworkFiles().putAll(other.getFrameworkFiles());
+        
+        return merged;
+    }
+    
+    /**
+     * Check if structure has Java sources
+     * 
+     * @return true if structure has Java sources
+     */
+    public boolean hasJavaSources() {
+        return basePackage != null && !basePackage.isEmpty();
+    }
+    
+    /**
+     * Check if structure has TypeScript sources
+     * 
+     * @return true if structure has TypeScript sources
+     */
+    public boolean hasTypeScriptSources() {
+        return frameworkFiles.containsKey("tsconfig.json");
+    }
+    
+    /**
+     * Check if structure uses Maven
+     * 
+     * @return true if structure uses Maven
+     */
+    public boolean usesMaven() {
+        return frameworkFiles.containsKey("pom.xml");
+    }
+    
+    /**
+     * Check if structure uses npm
+     * 
+     * @return true if structure uses npm
+     */
+    public boolean usesNpm() {
+        return frameworkFiles.containsKey("package.json");
+    }
+    
+    /**
+     * Get source directories
+     * 
+     * @return Source directories
+     */
+    public List<String> getSourceDirectories() {
+        List<String> sourceDirs = new ArrayList<>();
+        
+        for (String directory : directories) {
+            if (directory.contains("src") || directory.equals("src")) {
+                sourceDirs.add(directory);
+            }
+        }
+        
+        return sourceDirs;
+    }
+    
+    /**
+     * Get test directories
+     * 
+     * @return Test directories
+     */
+    public List<String> getTestDirectories() {
+        List<String> testDirs = new ArrayList<>();
+        
+        for (String directory : directories) {
+            if (directory.contains("test") || directory.equals("tests") || 
+                directory.contains("features") || directory.contains("step-definitions")) {
+                testDirs.add(directory);
+            }
+        }
+        
+        return testDirs;
+    }
+    
+    /**
+     * Check if structure uses TestNG
+     * 
+     * @return true if structure uses TestNG
+     */
+    public boolean usesTestNG() {
+        return frameworkFiles.containsValue("framework/java/selenium/testng/testng.xml") ||
+               frameworkFiles.containsValue("framework/java/playwright/testng/testng.xml") ||
+               frameworkFiles.containsKey("playwright.config.ts");
+    }
+    
+    /**
+     * Check if structure uses BDD
+     * 
+     * @return true if structure uses BDD
+     */
+    public boolean usesBDD() {
+        return frameworkFiles.containsValue("framework/java/selenium/bdd/cucumber.properties") ||
+               frameworkFiles.containsValue("framework/java/playwright/bdd/cucumber.properties") ||
+               frameworkFiles.containsKey("cucumber.js");
+    }
+}
