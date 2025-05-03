@@ -1,0 +1,4586 @@
+package com.cstestforge.service.execution;
+
+import com.cstestforge.model.test.GeneratedTest;
+import com.cstestforge.model.test.TestExecutionResult;
+import com.cstestforge.model.recorder.ProgrammingLanguage;
+import com.cstestforge.model.recorder.TestingFramework;
+import com.cstestforge.model.recorder.TestType;
+import com.cstestforge.service.execution.executor.SeleniumExecutor;
+import com.cstestforge.service.execution.executor.PlaywrightExecutor;
+import org.springframework.stereotype.Service;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+/**
+ * Service for executing generated tests
+ */
+@Service
+public class TestExecutionService {
+
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
+    private final SeleniumExecutor seleniumExecutor;
+    private final PlaywrightExecutor playwrightExecutor;
+    
+    /**
+     * Constructor
+     */
+    public TestExecutionService() {
+        this.seleniumExecutor = new SeleniumExecutor();
+        this.playwrightExecutor = new PlaywrightExecutor();
+    }
+    
+    /**
+     * Execute a generated test
+     * 
+     * @param test Generated test
+     * @return true if test passed
+     */
+    public boolean executeTest(GeneratedTest test) {
+        try {
+            // Check if test file exists
+            String testFile = test.getFilePath();
+            if (testFile == null || testFile.isEmpty() || !Files.exists(Paths.get(testFile))) {
+                throw new IllegalArgumentException("Test file not found: " + testFile);
+            }
+            
+            // Determine execution strategy based on test type
+            TestExecutionResult result;
+            
+            if (test.getFramework().equals(TestingFramework.SELENIUM)) {
+                // Execute Selenium test
+                result = seleniumExecutor.executeTest(test);
+            } else if (test.getFramework().equals(TestingFramework.PLAYWRIGHT)) {
+                // Execute Playwright test
+                result = playwrightExecutor.executeTest(test);
+            } else {
+                throw new IllegalArgumentException("Unsupported testing framework: " + test.getFramework());
+            }
+            
+            return result.getStatus() == TestExecutionResult.TestStatus.PASSED;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Execute multiple tests
+     * 
+     * @param tests List of tests to execute
+     * @return Map of test IDs to execution results
+     */
+    public List<TestExecutionResult> executeTests(List<GeneratedTest> tests) {
+        List<CompletableFuture<TestExecutionResult>> futures = new ArrayList<>();
+        
+        // Submit each test for execution
+        for (GeneratedTest test : tests) {
+            CompletableFuture<TestExecutionResult> future = CompletableFuture.supplyAsync(() -> {
+                try {
+                    if (test.getFramework().equals(TestingFramework.SELENIUM)) {
+                        // Execute Selenium test
+                        return seleniumExecutor.executeTest(test);
+                    } else if (test.getFramework().equals(TestingFramework.PLAYWRIGHT)) {
+                        // Execute Playwright test
+                        return playwrightExecutor.executeTest(test);
+                    } else {
+                        // Unsupported framework
+                        TestExecutionResult result = new TestExecutionResult();
+                        result.setStatus(TestExecutionResult.TestStatus.ERROR);
+                        result.setErrorMessage("Unsupported testing framework: " + test.getFramework());
+                        return result;
+                    }
+                } catch (Exception e) {
+                    // Handle execution error
+                    TestExecutionResult result = new TestExecutionResult();
+                    result.setStatus(TestExecutionResult.TestStatus.ERROR);
+                    result.setErrorMessage("Error executing test: " + e.getMessage());
+                    result.setErrorStackTrace(getStackTrace(e));
+                    return result;
+                }
+            }, executorService);
+            
+            futures.add(future);
+        }
+        
+        // Wait for all tests to complete
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Execute a Maven project
+     * 
+     * @param projectDir Project directory
+     * @return Execution result
+     */
+    public TestExecutionResult executeMavenProject(String projectDir) {
+        TestExecutionResult result = new TestExecutionResult();
+        result.setStartTime(System.currentTimeMillis());
+        
+        try {
+            // Check if project directory exists
+            File projectDirFile = new File(projectDir);
+            if (!projectDirFile.exists() || !projectDirFile.isDirectory()) {
+                throw new IllegalArgumentException("Project directory not found: " + projectDir);
+            }
+            
+            // Check if pom.xml exists
+            File pomFile = new File(projectDir + File.separator + "pom.xml");
+            if (!pomFile.exists()) {
+                throw new IllegalArgumentException("pom.xml not found in project directory");
+            }
+            
+            // Build Maven command
+            List<String> command = new ArrayList<>();
+            command.add(isWindows() ? "mvn.cmd" : "mvn");
+            command.add("clean");
+            command.add("test");
+            
+            // Create process builder
+            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            processBuilder.directory(projectDirFile);
+            processBuilder.redirectErrorStream(true);
+            
+            // Start process
+            Process process = processBuilder.start();
+            
+            // Capture output
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            // Wait for process to complete
+            boolean completed = process.waitFor(5, TimeUnit.MINUTES);
+            
+            // Check if process completed
+            if (!completed) {
+                process.destroy();
+                throw new RuntimeException("Maven execution timed out");
+            }
+            
+            // Check exit code
+            int exitCode = process.exitValue();
+            
+            result.setEndTime(System.currentTimeMillis());
+            result.setDuration(result.getEndTime() - result.getStartTime());
+            result.setLogOutput(output.toString());
+            
+            if (exitCode == 0) {
+                result.setStatus(TestExecutionResult.TestStatus.PASSED);
+            } else {
+                result.setStatus(TestExecutionResult.TestStatus.FAILED);
+                result.setErrorMessage("Maven execution failed with exit code: " + exitCode);
+            }
+        } catch (Exception e) {
+            result.setEndTime(System.currentTimeMillis());
+            result.setDuration(result.getEndTime() - result.getStartTime());
+            result.setStatus(TestExecutionResult.TestStatus.ERROR);
+            result.setErrorMessage("Error executing Maven project: " + e.getMessage());
+            result.setErrorStackTrace(getStackTrace(e));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Execute an npm project
+     * 
+     * @param projectDir Project directory
+     * @return Execution result
+     */
+    public TestExecutionResult executeNpmProject(String projectDir) {
+        TestExecutionResult result = new TestExecutionResult();
+        result.setStartTime(System.currentTimeMillis());
+        
+        try {
+            // Check if project directory exists
+            File projectDirFile = new File(projectDir);
+            if (!projectDirFile.exists() || !projectDirFile.isDirectory()) {
+                throw new IllegalArgumentException("Project directory not found: " + projectDir);
+            }
+            
+            // Check if package.json exists
+            File packageJsonFile = new File(projectDir + File.separator + "package.json");
+            if (!packageJsonFile.exists()) {
+                throw new IllegalArgumentException("package.json not found in project directory");
+            }
+            
+            // Build npm commands
+            List<String> installCommand = new ArrayList<>();
+            installCommand.add(isWindows() ? "npm.cmd" : "npm");
+            installCommand.add("install");
+            
+            List<String> testCommand = new ArrayList<>();
+            testCommand.add(isWindows() ? "npm.cmd" : "npm");
+            testCommand.add("test");
+            
+            // Create process builders
+            ProcessBuilder installProcessBuilder = new ProcessBuilder(installCommand);
+            installProcessBuilder.directory(projectDirFile);
+            installProcessBuilder.redirectErrorStream(true);
+            
+            ProcessBuilder testProcessBuilder = new ProcessBuilder(testCommand);
+            testProcessBuilder.directory(projectDirFile);
+            testProcessBuilder.redirectErrorStream(true);
+            
+            // Run npm install
+            StringBuilder output = new StringBuilder();
+            output.append("=== npm install ===\n");
+            
+            Process installProcess = installProcessBuilder.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(installProcess.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            boolean installCompleted = installProcess.waitFor(5, TimeUnit.MINUTES);
+            if (!installCompleted) {
+                installProcess.destroy();
+                throw new RuntimeException("npm install timed out");
+            }
+            
+            int installExitCode = installProcess.exitValue();
+            if (installExitCode != 0) {
+                result.setEndTime(System.currentTimeMillis());
+                result.setDuration(result.getEndTime() - result.getStartTime());
+                result.setStatus(TestExecutionResult.TestStatus.ERROR);
+                result.setErrorMessage("npm install failed with exit code: " + installExitCode);
+                result.setLogOutput(output.toString());
+                return result;
+            }
+            
+            // Run npm test
+            output.append("\n=== npm test ===\n");
+            
+            Process testProcess = testProcessBuilder.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(testProcess.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            boolean testCompleted = testProcess.waitFor(5, TimeUnit.MINUTES);
+            if (!testCompleted) {
+                testProcess.destroy();
+                throw new RuntimeException("npm test timed out");
+            }
+            
+            int testExitCode = testProcess.exitValue();
+            
+            result.setEndTime(System.currentTimeMillis());
+            result.setDuration(result.getEndTime() - result.getStartTime());
+            result.setLogOutput(output.toString());
+            
+            if (testExitCode == 0) {
+                result.setStatus(TestExecutionResult.TestStatus.PASSED);
+            } else {
+                result.setStatus(TestExecutionResult.TestStatus.FAILED);
+                result.setErrorMessage("npm test failed with exit code: " + testExitCode);
+            }
+        } catch (Exception e) {
+            result.setEndTime(System.currentTimeMillis());
+            result.setDuration(result.getEndTime() - result.getStartTime());
+            result.setStatus(TestExecutionResult.TestStatus.ERROR);
+            result.setErrorMessage("Error executing npm project: " + e.getMessage());
+            result.setErrorStackTrace(getStackTrace(e));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Create temporary test file
+     * 
+     * @param content File content
+     * @param extension File extension
+     * @return Path to temporary file
+     * @throws IOException if file cannot be created
+     */
+    public String createTempTestFile(String content, String extension) throws IOException {
+        // Create temp directory if it doesn't exist
+        Path tempDir = Paths.get(System.getProperty("java.io.tmpdir"), "cstestforge_tests");
+        Files.createDirectories(tempDir);
+        
+        // Create unique file name
+        String fileName = "test_" + UUID.randomUUID().toString() + "." + extension;
+        Path filePath = tempDir.resolve(fileName);
+        
+        // Write content to file
+        Files.writeString(filePath, content);
+        
+        return filePath.toString();
+    }
+    
+    /**
+     * Check if running on Windows
+     * 
+     * @return true if running on Windows
+     */
+    private boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+    
+    /**
+     * Get stack trace as string
+     * 
+     * @param throwable Throwable
+     * @return Stack trace as string
+     */
+    private String getStackTrace(Throwable throwable) {
+        if (throwable == null) {
+            return "";
+        }
+        
+        java.io.StringWriter sw = new java.io.StringWriter();
+        java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
+    }
+    
+    /**
+     * Shutdown executor service
+     */
+    public void shutdown() {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+    
+    /**
+     * Parse TestNG results from surefire reports
+     * 
+     * @param projectDir Project directory
+     * @return List of test results
+     */
+    public List<TestExecutionResult> parseTestNGResults(String projectDir) {
+        List<TestExecutionResult> results = new ArrayList<>();
+        
+        try {
+            // Look for surefire reports directory
+            Path reportsDir = Paths.get(projectDir, "target", "surefire-reports");
+            if (!Files.exists(reportsDir)) {
+                return results;
+            }
+            
+            // Find XML result files
+            List<Path> xmlFiles = Files.list(reportsDir)
+                    .filter(path -> path.toString().endsWith(".xml"))
+                    .collect(Collectors.toList());
+            
+            for (Path xmlFile : xmlFiles) {
+                // Parse XML file
+                String content = Files.readString(xmlFile);
+                
+                // Extract test results
+                TestExecutionResult result = parseTestNGXml(content);
+                result.setEnvironment(projectDir);
+                
+                results.add(result);
+            }
+        } catch (Exception e) {
+            // Log error
+            e.printStackTrace();
+        }
+        
+        return results;
+    }
+    
+    /**
+     * Parse TestNG XML result file
+     * 
+     * @param content XML content
+     * @return Test execution result
+     */
+    private TestExecutionResult parseTestNGXml(String content) {
+        TestExecutionResult result = new TestExecutionResult();
+        
+        try {
+            // Extract test name
+            String namePattern = "<testng-results.*?name=\"(.+?)\"";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(namePattern);
+            java.util.regex.Matcher matcher = pattern.matcher(content);
+            
+            if (matcher.find()) {
+                // Add test name to the result
+                String testName = matcher.group(1);
+                
+                // Add test steps
+                List<TestExecutionResult.TestStep> steps = new ArrayList<>();
+                
+                // Extract test methods
+                String methodPattern = "<test-method.*?name=\"(.+?)\".*?status=\"(.+?)\".*?duration-ms=\"(\\d+)\"";
+                pattern = java.util.regex.Pattern.compile(methodPattern);
+                matcher = pattern.matcher(content);
+                
+                while (matcher.find()) {
+                    String methodName = matcher.group(1);
+                    String status = matcher.group(2);
+                    long duration = Long.parseLong(matcher.group(3));
+                    
+                    TestExecutionResult.TestStep step = new TestExecutionResult.TestStep();
+                    step.setName(methodName);
+                    step.setDuration(duration);
+                    
+                    if ("PASS".equalsIgnoreCase(status)) {
+                        step.setStatus(TestExecutionResult.TestStatus.PASSED);
+                    } else if ("FAIL".equalsIgnoreCase(status)) {
+                        step.setStatus(TestExecutionResult.TestStatus.FAILED);
+                        
+                        // Extract error message
+                        String errorPattern = "<test-method.*?name=\"" + methodName + "\".*?<exception.*?<message><!\\[CDATA\\[(.+?)\\]\\]></message>";
+                        java.util.regex.Pattern errorPattern1 = java.util.regex.Pattern.compile(errorPattern);
+                        java.util.regex.Matcher errorMatcher = errorPattern1.matcher(content);
+                        
+                        if (errorMatcher.find()) {
+                            step.setErrorMessage(errorMatcher.group(1));
+                        }
+                    } else if ("SKIP".equalsIgnoreCase(status)) {
+                        step.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+                    } else {
+                        step.setStatus(TestExecutionResult.TestStatus.NOT_RUN);
+                    }
+                    
+                    steps.add(step);
+                }
+                
+                result.setSteps(steps);
+                
+                // Determine overall status
+                boolean hasFailed = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.FAILED);
+                boolean hasSkipped = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.SKIPPED);
+                
+                if (hasFailed) {
+                    result.setStatus(TestExecutionResult.TestStatus.FAILED);
+                } else if (hasSkipped) {
+                    result.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+                } else {
+                    result.setStatus(TestExecutionResult.TestStatus.PASSED);
+                }
+                
+                // Calculate total duration
+                long totalDuration = steps.stream().mapToLong(TestExecutionResult.TestStep::getDuration).sum();
+                result.setDuration(totalDuration);
+            }
+        } catch (Exception e) {
+            // Log error
+            e.printStackTrace();
+            
+            // Set error status
+            result.setStatus(TestExecutionResult.TestStatus.ERROR);
+            result.setErrorMessage("Error parsing TestNG results: " + e.getMessage());
+            result.setErrorStackTrace(getStackTrace(e));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Parse Cucumber results from JSON report
+     * 
+     * @param projectDir Project directory
+     * @return List of test results
+     */
+    public List<TestExecutionResult> parseCucumberResults(String projectDir) {
+        List<TestExecutionResult> results = new ArrayList<>();
+        
+        try {
+            // Look for cucumber reports directory
+            Path reportsDir = Paths.get(projectDir, "target", "cucumber-reports");
+            if (!Files.exists(reportsDir)) {
+                return results;
+            }
+            
+            // Find JSON result files
+            List<Path> jsonFiles = Files.list(reportsDir)
+                    .filter(path -> path.toString().endsWith(".json"))
+                    .collect(Collectors.toList());
+            
+            for (Path jsonFile : jsonFiles) {
+                // Parse JSON file
+                String content = Files.readString(jsonFile);
+                
+                // Extract test results
+                TestExecutionResult result = parseCucumberJson(content);
+                result.setEnvironment(projectDir);
+                
+                results.add(result);
+            }
+        } catch (Exception e) {
+            // Log error
+            e.printStackTrace();
+        }
+        
+        return results;
+    }
+    
+    /**
+     * Parse Cucumber JSON result file
+     * 
+     * @param content JSON content
+     * @return Test execution result
+     */
+    private TestExecutionResult parseCucumberJson(String content) {
+        TestExecutionResult result = new TestExecutionResult();
+        
+        try {
+            // Extract feature name
+            String namePattern = "\"name\":\\s*\"(.+?)\"";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(namePattern);
+            java.util.regex.Matcher matcher = pattern.matcher(content);
+            
+            if (matcher.find()) {
+                // Add feature name to the result
+                String featureName = matcher.group(1);
+                
+                // Add test steps
+                List<TestExecutionResult.TestStep> steps = new ArrayList<>();
+                
+                // Extract scenarios
+                String scenarioPattern = "\"elements\":\\s*\\[\\s*\\{\\s*\"name\":\\s*\"(.+?)\"";
+                pattern = java.util.regex.Pattern.compile(scenarioPattern);
+                matcher = pattern.matcher(content);
+                
+                while (matcher.find()) {
+                    String scenarioName = matcher.group(1);
+                    
+                    // Extract steps
+                    String stepPattern = "\"steps\":\\s*\\[\\s*\\{\\s*\"name\":\\s*\"(.+?)\".*?\"status\":\\s*\"(.+?)\"";
+                    java.util.regex.Pattern stepPattern1 = java.util.regex.Pattern.compile(stepPattern);
+                    java.util.regex.Matcher stepMatcher = stepPattern1.matcher(content);
+                    
+                    while (stepMatcher.find()) {
+                        String stepName = stepMatcher.group(1);
+                        String status = stepMatcher.group(2);
+                        
+                        TestExecutionResult.TestStep step = new TestExecutionResult.TestStep();
+                        step.setName(scenarioName + " - " + stepName);
+                        
+                        if ("passed".equalsIgnoreCase(status)) {
+                            step.setStatus(TestExecutionResult.TestStatus.PASSED);
+                        } else if ("failed".equalsIgnoreCase(status)) {
+                            step.setStatus(TestExecutionResult.TestStatus.FAILED);
+                            
+                            // Extract error message
+                            String errorPattern = "\"error_message\":\\s*\"(.+?)\"";
+                            java.util.regex.Pattern errorPattern1 = java.util.regex.Pattern.compile(errorPattern);
+                            java.util.regex.Matcher errorMatcher = errorPattern1.matcher(content);
+                            
+                            if (errorMatcher.find()) {
+                                step.setErrorMessage(errorMatcher.group(1).replace("\\n", "\n"));
+                            }
+                        } else if ("skipped".equalsIgnoreCase(status)) {
+                            step.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+                        } else {
+                            step.setStatus(TestExecutionResult.TestStatus.NOT_RUN);
+                        }
+                        
+                        steps.add(step);
+                    }
+                }
+                
+                result.setSteps(steps);
+                
+                // Determine overall status
+                boolean hasFailed = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.FAILED);
+                boolean hasSkipped = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.SKIPPED);
+                
+                if (hasFailed) {
+                    result.setStatus(TestExecutionResult.TestStatus.FAILED);
+                } else if (hasSkipped) {
+                    result.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+                } else {
+                    result.setStatus(TestExecutionResult.TestStatus.PASSED);
+                }
+            }
+        } catch (Exception e) {
+            // Log error
+            e.printStackTrace();
+            
+            // Set error status
+            result.setStatus(TestExecutionResult.TestStatus.ERROR);
+            result.setErrorMessage("Error parsing Cucumber results: " + e.getMessage());
+            result.setErrorStackTrace(getStackTrace(e));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Parse Playwright test results
+     * 
+     * @param output Test output
+     * @return Test execution result
+     */
+    public TestExecutionResult parsePlaywrightResults(String output) {
+        TestExecutionResult result = new TestExecutionResult();
+        
+        try {
+            // Add test steps
+            List<TestExecutionResult.TestStep> steps = new ArrayList<>();
+            
+            // Extract test results
+            String testPattern = "\\s+\\d+\\) (.+?)\\s+\\[(.+?)\\]";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(testPattern);
+            java.util.regex.Matcher matcher = pattern.matcher(output);
+            
+            while (matcher.find()) {
+                String testName = matcher.group(1);
+                String status = matcher.group(2);
+                
+                TestExecutionResult.TestStep step = new TestExecutionResult.TestStep();
+                step.setName(testName);
+                
+                if ("PASSED".equalsIgnoreCase(status)) {
+                    step.setStatus(TestExecutionResult.TestStatus.PASSED);
+                } else if ("FAILED".equalsIgnoreCase(status)) {
+                    step.setStatus(TestExecutionResult.TestStatus.FAILED);
+                    
+                    // Extract error message
+                    String errorPattern = "\\[FAILED\\](.+?)\\n\\n";
+                    java.util.regex.Pattern errorPattern1 = java.util.regex.Pattern.compile(errorPattern, java.util.regex.Pattern.DOTALL);
+                    java.util.regex.Matcher errorMatcher = errorPattern1.matcher(output);
+                    
+                    if (errorMatcher.find()) {
+                        step.setErrorMessage(errorMatcher.group(1).trim());
+                    }
+                } else if ("SKIPPED".equalsIgnoreCase(status)) {
+                    step.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+                } else {
+                    step.setStatus(TestExecutionResult.TestStatus.NOT_RUN);
+                }
+                
+                steps.add(step);
+            }
+            
+            result.setSteps(steps);
+            
+            // Determine overall status
+            boolean hasFailed = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.FAILED);
+            boolean hasSkipped = steps.stream().anyMatch(step -> step.getStatus() == TestExecutionResult.TestStatus.SKIPPED);
+            
+            if (hasFailed) {
+                result.setStatus(TestExecutionResult.TestStatus.FAILED);
+            } else if (hasSkipped) {
+                result.setStatus(TestExecutionResult.TestStatus.SKIPPED);
+            } else {
+                result.setStatus(TestExecutionResult.TestStatus.PASSED);
+            }
+            
+            // Extract duration
+            String durationPattern = "Duration:\\s+(\\d+)s (\\d+)ms";
+            pattern = java.util.regex.Pattern.compile(durationPattern);
+            matcher = pattern.matcher(output);
+            
+            if (matcher.find()) {
+                int seconds = Integer.parseInt(matcher.group(1));
+                int milliseconds = Integer.parseInt(matcher.group(2));
+                result.setDuration(seconds * 1000L + milliseconds);
+            }
+            
+            // Set log output
+            result.setLogOutput(output);
+        } catch (Exception e) {
+            // Log error
+            e.printStackTrace();
+            
+            // Set error status
+            result.setStatus(TestExecutionResult.TestStatus.ERROR);
+            result.setErrorMessage("Error parsing Playwright results: " + e.getMessage());
+            result.setErrorStackTrace(getStackTrace(e));
+        }
+        
+        return result;
+    }
+}
+
+
+package com.cstestforge.backend.service.execution;
+
+import com.cstestforge.backend.model.TestExecutionResult;
+import com.cstestforge.backend.model.GeneratedTest;
+import com.cstestforge.backend.model.TestStep;
+import com.cstestforge.backend.service.reporting.CSReporter;
+import com.cstestforge.backend.framework.CSBaseTest;
+import com.cstestforge.backend.framework.CSElement;
+import com.cstestforge.backend.framework.CSWaitStrategy;
+import com.cstestforge.backend.service.config.ConfigurationManager;
+
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.edge.EdgeDriver;
+import org.openqa.selenium.edge.EdgeOptions;
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.Select;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.time.Duration;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.DiagnosticCollector;
+import javax.tools.Diagnostic;
+
+import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+
+@Component
+public class SeleniumExecutor implements TestExecutor {
+
+    @Autowired
+    private ConfigurationManager configManager;
+
+    @Autowired
+    private CSReporter reporter;
+
+    private WebDriver driver;
+    private Map<String, Object> testContextData = new HashMap<>();
+    private boolean isExecutionInProgress = false;
+
+    @Override
+    public TestExecutionResult executeTest(GeneratedTest generatedTest, String projectPath) {
+        TestExecutionResult result = new TestExecutionResult();
+        result.setTestId(generatedTest.getId());
+        result.setStartTime(System.currentTimeMillis());
+        result.setStatus("INITIALIZING");
+        
+        try {
+            if (isExecutionInProgress) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Another test execution is already in progress");
+                return result;
+            }
+            
+            isExecutionInProgress = true;
+            
+            // Set up temporary directory for test compilation
+            Path tempDir = Files.createTempDirectory("cstestforge_execution_");
+            String tempDirPath = tempDir.toString();
+            
+            // Write test class to file
+            String testClassName = generatedTest.getClassName();
+            String packageName = generatedTest.getPackageName();
+            String fullClassName = packageName + "." + testClassName;
+            
+            Path packageDir = Files.createDirectories(Paths.get(tempDirPath, packageName.replace(".", File.separator)));
+            Path testFilePath = packageDir.resolve(testClassName + ".java");
+            
+            Files.write(testFilePath, generatedTest.getCode().getBytes());
+            
+            // Compile the test class
+            JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+            if (compiler == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Java compiler not available in runtime");
+                return result;
+            }
+            
+            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+            StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+            
+            List<String> options = new ArrayList<>();
+            options.add("-classpath");
+            
+            // Add required jars to classpath
+            String classpath = System.getProperty("java.class.path");
+            // Add Selenium and other dependencies
+            String seleniumJarPath = projectPath + "/lib/selenium/selenium-java-4.12.1.jar";
+            classpath += File.pathSeparator + seleniumJarPath;
+            
+            options.add(classpath);
+            
+            Iterable<? extends JavaFileObject> compilationUnits = 
+                fileManager.getJavaFileObjectsFromFiles(List.of(testFilePath.toFile()));
+            
+            Boolean compilationSuccess = compiler.getTask(
+                null, 
+                fileManager, 
+                diagnostics, 
+                options, 
+                null, 
+                compilationUnits
+            ).call();
+            
+            if (!compilationSuccess) {
+                StringBuilder errorMsg = new StringBuilder("Compilation failed:\n");
+                for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+                    errorMsg.append(diagnostic.getMessage(null))
+                           .append(" Line: ").append(diagnostic.getLineNumber())
+                           .append("\n");
+                }
+                result.setStatus("FAILED");
+                result.setErrorMessage(errorMsg.toString());
+                return result;
+            }
+            
+            // Initialize the browser
+            String browser = generatedTest.getBrowser();
+            initializeDriver(browser);
+            
+            if (driver == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Failed to initialize WebDriver for browser: " + browser);
+                return result;
+            }
+            
+            // Set up execution environment
+            driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+            driver.manage().window().maximize();
+            
+            // Start the reporter
+            reporter.startTest(generatedTest.getName());
+            
+            // Load and execute the test class dynamically
+            URLClassLoader classLoader = new URLClassLoader(
+                new URL[] { new URL("file://" + tempDir.toUri().getPath()) },
+                getClass().getClassLoader()
+            );
+            
+            Class<?> testClass = Class.forName(fullClassName, true, classLoader);
+            Object testInstance = testClass.getDeclaredConstructor().newInstance();
+            
+            // Inject required dependencies
+            if (testInstance instanceof CSBaseTest) {
+                CSBaseTest baseTest = (CSBaseTest) testInstance;
+                baseTest.setDriver(driver);
+                baseTest.setReporter(reporter);
+                baseTest.setConfigManager(configManager);
+                baseTest.setContext(testContextData);
+            }
+            
+            // Find and execute the test method
+            Method testMethod = null;
+            for (Method method : testClass.getMethods()) {
+                if (method.isAnnotationPresent(org.testng.annotations.Test.class)) {
+                    testMethod = method;
+                    break;
+                }
+            }
+            
+            if (testMethod == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("No test method found in generated class");
+                return result;
+            }
+            
+            result.setStatus("RUNNING");
+            
+            // Execute the test method
+            testMethod.invoke(testInstance);
+            
+            // Test execution completed successfully
+            result.setStatus("PASSED");
+            result.setCompletedSteps(generatedTest.getSteps().size());
+            result.setScreenshots(reporter.getScreenshots());
+            result.setLogs(reporter.getLogs());
+            
+        } catch (Exception e) {
+            result.setStatus("FAILED");
+            result.setErrorMessage("Exception during test execution: " + e.getMessage());
+            
+            // Record stack trace
+            StringBuilder stackTrace = new StringBuilder();
+            for (StackTraceElement element : e.getStackTrace()) {
+                stackTrace.append(element.toString()).append("\n");
+            }
+            result.setStackTrace(stackTrace.toString());
+            
+            // Try to take a failure screenshot
+            if (driver != null) {
+                String screenshotPath = reporter.takeScreenshot(driver);
+                if (screenshotPath != null) {
+                    result.getScreenshots().add(screenshotPath);
+                }
+            }
+            
+        } finally {
+            isExecutionInProgress = false;
+            result.setEndTime(System.currentTimeMillis());
+            
+            // Close the driver
+            if (driver != null) {
+                try {
+                    driver.quit();
+                } catch (Exception e) {
+                    // Ignore driver quit exceptions
+                }
+                driver = null;
+            }
+            
+            // End the reporter
+            reporter.endTest();
+        }
+        
+        return result;
+    }
+    
+    @Override
+    public void stopExecution() {
+        if (isExecutionInProgress && driver != null) {
+            try {
+                driver.quit();
+            } catch (Exception e) {
+                // Ignore driver quit exceptions
+            }
+            driver = null;
+            isExecutionInProgress = false;
+        }
+    }
+    
+    @Override
+    public boolean isExecutionInProgress() {
+        return isExecutionInProgress;
+    }
+    
+    private void initializeDriver(String browser) {
+        try {
+            switch (browser.toLowerCase()) {
+                case "chrome":
+                    ChromeOptions chromeOptions = new ChromeOptions();
+                    // Add options from configuration
+                    configManager.getConfigProperty("chrome.options", "").split(",")
+                        .forEach(option -> {
+                            if (!option.trim().isEmpty()) {
+                                chromeOptions.addArguments(option.trim());
+                            }
+                        });
+                    driver = new ChromeDriver(chromeOptions);
+                    break;
+                    
+                case "firefox":
+                    FirefoxOptions firefoxOptions = new FirefoxOptions();
+                    // Add options from configuration
+                    configManager.getConfigProperty("firefox.options", "").split(",")
+                        .forEach(option -> {
+                            if (!option.trim().isEmpty()) {
+                                firefoxOptions.addArguments(option.trim());
+                            }
+                        });
+                    driver = new FirefoxDriver(firefoxOptions);
+                    break;
+                    
+                case "edge":
+                    EdgeOptions edgeOptions = new EdgeOptions();
+                    // Add options from configuration
+                    configManager.getConfigProperty("edge.options", "").split(",")
+                        .forEach(option -> {
+                            if (!option.trim().isEmpty()) {
+                                edgeOptions.addArguments(option.trim());
+                            }
+                        });
+                    driver = new EdgeDriver(edgeOptions);
+                    break;
+                    
+                case "safari":
+                    SafariOptions safariOptions = new SafariOptions();
+                    // Add options specific to Safari
+                    driver = new SafariDriver(safariOptions);
+                    break;
+                    
+                default:
+                    throw new RuntimeException("Unsupported browser: " + browser);
+            }
+        } catch (Exception e) {
+            reporter.log("ERROR", "Failed to initialize driver: " + e.getMessage());
+            driver = null;
+        }
+    }
+    
+    @Override
+    public String getType() {
+        return "selenium";
+    }
+}
+
+
+package com.cstestforge.backend.service.execution;
+
+import com.cstestforge.backend.model.TestExecutionResult;
+import com.cstestforge.backend.model.GeneratedTest;
+import com.cstestforge.backend.service.reporting.CSReporter;
+import com.cstestforge.backend.framework.CSBaseTest;
+import com.cstestforge.backend.service.config.ConfigurationManager;
+
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.Tracing;
+import com.microsoft.playwright.BrowserType.LaunchOptions;
+
+import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.JavaFileObject;
+import javax.tools.DiagnosticCollector;
+import javax.tools.Diagnostic;
+
+@Component
+public class PlaywrightExecutor implements TestExecutor {
+
+    @Autowired
+    private ConfigurationManager configManager;
+
+    @Autowired
+    private CSReporter reporter;
+
+    private Playwright playwright;
+    private Browser browser;
+    private BrowserContext context;
+    private Page page;
+    private Map<String, Object> testContextData = new HashMap<>();
+    private boolean isExecutionInProgress = false;
+    private Path tracePath;
+
+    @Override
+    public TestExecutionResult executeTest(GeneratedTest generatedTest, String projectPath) {
+        TestExecutionResult result = new TestExecutionResult();
+        result.setTestId(generatedTest.getId());
+        result.setStartTime(System.currentTimeMillis());
+        result.setStatus("INITIALIZING");
+        
+        try {
+            if (isExecutionInProgress) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Another test execution is already in progress");
+                return result;
+            }
+            
+            isExecutionInProgress = true;
+            
+            // Set up temporary directory for test compilation
+            Path tempDir = Files.createTempDirectory("cstestforge_pw_execution_");
+            String tempDirPath = tempDir.toString();
+            
+            // Handle Java Playwright tests differently than TypeScript
+            if (generatedTest.getLanguage().equalsIgnoreCase("java")) {
+                return executeJavaPlaywrightTest(generatedTest, tempDir, projectPath, result);
+            } else if (generatedTest.getLanguage().equalsIgnoreCase("typescript")) {
+                return executeTypeScriptPlaywrightTest(generatedTest, tempDir, projectPath, result);
+            } else {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Unsupported language for Playwright test: " + generatedTest.getLanguage());
+                return result;
+            }
+            
+        } catch (Exception e) {
+            result.setStatus("FAILED");
+            result.setErrorMessage("Exception during test execution: " + e.getMessage());
+            
+            // Record stack trace
+            StringBuilder stackTrace = new StringBuilder();
+            for (StackTraceElement element : e.getStackTrace()) {
+                stackTrace.append(element.toString()).append("\n");
+            }
+            result.setStackTrace(stackTrace.toString());
+            
+            return result;
+            
+        } finally {
+            cleanupResources();
+            isExecutionInProgress = false;
+            result.setEndTime(System.currentTimeMillis());
+        }
+    }
+    
+    private TestExecutionResult executeJavaPlaywrightTest(GeneratedTest generatedTest, Path tempDir, String projectPath, TestExecutionResult result) {
+        try {
+            // Write test class to file
+            String testClassName = generatedTest.getClassName();
+            String packageName = generatedTest.getPackageName();
+            String fullClassName = packageName + "." + testClassName;
+            
+            Path packageDir = Files.createDirectories(Paths.get(tempDir.toString(), packageName.replace(".", File.separator)));
+            Path testFilePath = packageDir.resolve(testClassName + ".java");
+            
+            Files.write(testFilePath, generatedTest.getCode().getBytes());
+            
+            // Compile the test class
+            JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+            if (compiler == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Java compiler not available in runtime");
+                return result;
+            }
+            
+            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+            StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+            
+            List<String> options = new ArrayList<>();
+            options.add("-classpath");
+            
+            // Add required jars to classpath
+            String classpath = System.getProperty("java.class.path");
+            // Add Playwright and other dependencies
+            String playwrightJarPath = projectPath + "/lib/playwright/playwright-1.40.0.jar";
+            classpath += File.pathSeparator + playwrightJarPath;
+            
+            options.add(classpath);
+            
+            Iterable<? extends JavaFileObject> compilationUnits = 
+                fileManager.getJavaFileObjectsFromFiles(List.of(testFilePath.toFile()));
+            
+            Boolean compilationSuccess = compiler.getTask(
+                null, 
+                fileManager, 
+                diagnostics, 
+                options, 
+                null, 
+                compilationUnits
+            ).call();
+            
+            if (!compilationSuccess) {
+                StringBuilder errorMsg = new StringBuilder("Compilation failed:\n");
+                for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+                    errorMsg.append(diagnostic.getMessage(null))
+                           .append(" Line: ").append(diagnostic.getLineNumber())
+                           .append("\n");
+                }
+                result.setStatus("FAILED");
+                result.setErrorMessage(errorMsg.toString());
+                return result;
+            }
+            
+            // Initialize Playwright
+            String browserName = generatedTest.getBrowser();
+            initializePlaywright(browserName);
+            
+            if (browser == null || page == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Failed to initialize Playwright browser: " + browserName);
+                return result;
+            }
+            
+            // Start the reporter
+            reporter.startTest(generatedTest.getName());
+            
+            // Start tracing
+            tracePath = Paths.get(tempDir.toString(), generatedTest.getId() + ".zip");
+            context.tracing().start(new Tracing.StartOptions()
+                .setScreenshots(true)
+                .setSnapshots(true)
+                .setSources(true));
+            
+            // Load and execute the test class dynamically
+            URLClassLoader classLoader = new URLClassLoader(
+                new URL[] { new URL("file://" + tempDir.toUri().getPath()) },
+                getClass().getClassLoader()
+            );
+            
+            Class<?> testClass = Class.forName(fullClassName, true, classLoader);
+            Object testInstance = testClass.getDeclaredConstructor().newInstance();
+            
+            // Inject required dependencies
+            if (testInstance instanceof CSBaseTest) {
+                CSBaseTest baseTest = (CSBaseTest) testInstance;
+                baseTest.setPlaywrightPage(page);
+                baseTest.setReporter(reporter);
+                baseTest.setConfigManager(configManager);
+                baseTest.setContext(testContextData);
+            }
+            
+            // Find and execute the test method
+            Method testMethod = null;
+            for (Method method : testClass.getMethods()) {
+                if (method.isAnnotationPresent(org.testng.annotations.Test.class)) {
+                    testMethod = method;
+                    break;
+                }
+            }
+            
+            if (testMethod == null) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("No test method found in generated class");
+                return result;
+            }
+            
+            result.setStatus("RUNNING");
+            
+            // Execute the test method
+            testMethod.invoke(testInstance);
+            
+            // Stop tracing
+            context.tracing().stop(new Tracing.StopOptions()
+                .setPath(tracePath));
+            
+            // Test execution completed successfully
+            result.setStatus("PASSED");
+            result.setCompletedSteps(generatedTest.getSteps().size());
+            result.setLogs(reporter.getLogs());
+            
+            // Add trace file to results
+            result.setTraceFile(tracePath.toString());
+            
+            // Take final screenshot
+            byte[] screenshotBytes = page.screenshot(new Page.ScreenshotOptions().setFullPage(true));
+            Path screenshotPath = Paths.get(tempDir.toString(), generatedTest.getId() + "_final.png");
+            Files.write(screenshotPath, screenshotBytes);
+            result.getScreenshots().add(screenshotPath.toString());
+            
+        } catch (Exception e) {
+            result.setStatus("FAILED");
+            result.setErrorMessage("Exception during Java Playwright test execution: " + e.getMessage());
+            
+            // Record stack trace
+            StringBuilder stackTrace = new StringBuilder();
+            for (StackTraceElement element : e.getStackTrace()) {
+                stackTrace.append(element.toString()).append("\n");
+            }
+            result.setStackTrace(stackTrace.toString());
+            
+            // Try to take a failure screenshot
+            if (page != null) {
+                try {
+                    byte[] screenshotBytes = page.screenshot(new Page.ScreenshotOptions().setFullPage(true));
+                    Path screenshotPath = Paths.get(tempDir.toString(), generatedTest.getId() + "_error.png");
+                    Files.write(screenshotPath, screenshotBytes);
+                    result.getScreenshots().add(screenshotPath.toString());
+                } catch (Exception ex) {
+                    // Ignore screenshot exceptions
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    private TestExecutionResult executeTypeScriptPlaywrightTest(GeneratedTest generatedTest, Path tempDir, String projectPath, TestExecutionResult result) {
+        try {
+            // Create a directory for the TypeScript project
+            Path tsProjectDir = tempDir.resolve("ts-project");
+            Files.createDirectories(tsProjectDir);
+            
+            // Write package.json
+            Path packageJsonPath = tsProjectDir.resolve("package.json");
+            String packageJson = "{\n" +
+                "  \"name\": \"cstestforge-pw-test\",\n" +
+                "  \"version\": \"1.0.0\",\n" +
+                "  \"description\": \"Generated Playwright TypeScript Test\",\n" +
+                "  \"main\": \"index.js\",\n" +
+                "  \"scripts\": {\n" +
+                "    \"test\": \"npx playwright test\"\n" +
+                "  },\n" +
+                "  \"dependencies\": {\n" +
+                "    \"@playwright/test\": \"^1.40.0\"\n" +
+                "  }\n" +
+                "}";
+            Files.write(packageJsonPath, packageJson.getBytes());
+            
+            // Write tsconfig.json
+            Path tsconfigPath = tsProjectDir.resolve("tsconfig.json");
+            String tsconfig = "{\n" +
+                "  \"compilerOptions\": {\n" +
+                "    \"target\": \"ES2022\",\n" +
+                "    \"module\": \"commonjs\",\n" +
+                "    \"moduleResolution\": \"node\",\n" +
+                "    \"sourceMap\": true,\n" +
+                "    \"outDir\": \"./dist\",\n" +
+                "    \"strict\": true,\n" +
+                "    \"esModuleInterop\": true,\n" +
+                "    \"skipLibCheck\": true,\n" +
+                "    \"forceConsistentCasingInFileNames\": true\n" +
+                "  },\n" +
+                "  \"include\": [\"*.ts\", \"tests/**/*.ts\"],\n" +
+                "  \"exclude\": [\"node_modules\"]\n" +
+                "}";
+            Files.write(tsconfigPath, tsconfig.getBytes());
+            
+            // Write playwright.config.ts
+            Path playwrightConfigPath = tsProjectDir.resolve("playwright.config.ts");
+            String playwrightConfig = "import { defineConfig } from '@playwright/test';\n\n" +
+                "export default defineConfig({\n" +
+                "  testDir: './tests',\n" +
+                "  timeout: 60000,\n" +
+                "  use: {\n" +
+                "    headless: false,\n" +
+                "    viewport: { width: 1280, height: 720 },\n" +
+                "    ignoreHTTPSErrors: true,\n" +
+                "    video: 'on',\n" +
+                "    screenshot: 'on',\n" +
+                "    trace: 'on',\n" +
+                "  },\n" +
+                "  reporter: [ ['html', { outputFolder: './test-results' }] ],\n" +
+                "});";
+            Files.write(playwrightConfigPath, playwrightConfig.getBytes());
+            
+            // Create tests directory
+            Path testsDir = tsProjectDir.resolve("tests");
+            Files.createDirectories(testsDir);
+            
+            // Write test file
+            Path testFilePath = testsDir.resolve(generatedTest.getClassName() + ".spec.ts");
+            Files.write(testFilePath, generatedTest.getCode().getBytes());
+            
+            // Set up reporter
+            reporter.startTest(generatedTest.getName());
+            result.setStatus("RUNNING");
+            
+            // Execute the TypeScript test using the Playwright Test Runner
+            ProcessBuilder processBuilder = new ProcessBuilder();
+            processBuilder.directory(tsProjectDir.toFile());
+            
+            // Install dependencies
+            reporter.log("INFO", "Installing Playwright test dependencies...");
+            processBuilder.command("npm", "install");
+            Process npmInstall = processBuilder.start();
+            
+            BufferedReader npmInstallOutput = new BufferedReader(
+                new InputStreamReader(npmInstall.getInputStream()));
+            String line;
+            while ((line = npmInstallOutput.readLine()) != null) {
+                reporter.log("NPM", line);
+            }
+            
+            int npmExitCode = npmInstall.waitFor();
+            if (npmExitCode != 0) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Failed to install Playwright dependencies. Exit code: " + npmExitCode);
+                return result;
+            }
+            
+            // Run the test
+            reporter.log("INFO", "Running Playwright TypeScript test...");
+            processBuilder.command("npx", "playwright", "test");
+            Process playwrightTest = processBuilder.start();
+            
+            BufferedReader testOutput = new BufferedReader(
+                new InputStreamReader(playwrightTest.getInputStream()));
+            BufferedReader testError = new BufferedReader(
+                new InputStreamReader(playwrightTest.getErrorStream()));
+            
+            List<String> outputLines = new ArrayList<>();
+            while ((line = testOutput.readLine()) != null) {
+                reporter.log("TEST", line);
+                outputLines.add(line);
+            }
+            
+            List<String> errorLines = new ArrayList<>();
+            while ((line = testError.readLine()) != null) {
+                reporter.log("ERROR", line);
+                errorLines.add(line);
+            }
+            
+            int testExitCode = playwrightTest.waitFor();
+            
+            // Collect results
+            Path testResultsDir = tsProjectDir.resolve("test-results");
+            
+            if (testExitCode == 0) {
+                result.setStatus("PASSED");
+                result.setCompletedSteps(generatedTest.getSteps().size());
+            } else {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Playwright test failed with exit code: " + testExitCode);
+                result.setStackTrace(String.join("\n", errorLines));
+            }
+            
+            // Collect screenshots, traces, and videos
+            if (Files.exists(testResultsDir)) {
+                collectTestArtifacts(testResultsDir, result);
+            }
+            
+            // Collect logs
+            result.setLogs(reporter.getLogs());
+            result.getTestOutput().addAll(outputLines);
+            result.getTestOutput().addAll(errorLines);
+            
+        } catch (Exception e) {
+            result.setStatus("FAILED");
+            result.setErrorMessage("Exception during TypeScript Playwright test execution: " + e.getMessage());
+            
+            // Record stack trace
+            StringBuilder stackTrace = new StringBuilder();
+            for (StackTraceElement element : e.getStackTrace()) {
+                stackTrace.append(element.toString()).append("\n");
+            }
+            result.setStackTrace(stackTrace.toString());
+        }
+        
+        return result;
+    }
+    
+    private void collectTestArtifacts(Path testResultsDir, TestExecutionResult result) throws IOException {
+        // Collect screenshots
+        Path screenshotsDir = testResultsDir.resolve("screenshots");
+        if (Files.exists(screenshotsDir)) {
+            Files.walk(screenshotsDir)
+                .filter(path -> path.toString().endsWith(".png"))
+                .forEach(path -> result.getScreenshots().add(path.toString()));
+        }
+        
+        // Collect traces
+        Path tracesDir = testResultsDir.resolve("traces");
+        if (Files.exists(tracesDir)) {
+            Files.walk(tracesDir)
+                .filter(path -> path.toString().endsWith(".zip"))
+                .forEach(path -> result.setTraceFile(path.toString()));
+        }
+        
+        // Collect videos
+        Path videosDir = testResultsDir.resolve("videos");
+        if (Files.exists(videosDir)) {
+            Files.walk(videosDir)
+                .filter(path -> path.toString().endsWith(".webm"))
+                .forEach(path -> result.setVideoFile(path.toString()));
+        }
+    }
+    
+    @Override
+    public void stopExecution() {
+        if (isExecutionInProgress) {
+            cleanupResources();
+            isExecutionInProgress = false;
+        }
+    }
+    
+    @Override
+    public boolean isExecutionInProgress() {
+        return isExecutionInProgress;
+    }
+    
+    private void initializePlaywright(String browserName) {
+        try {
+            // Initialize Playwright
+            playwright = Playwright.create();
+            
+            // Create browser instance based on browser type
+            BrowserType browserType;
+            LaunchOptions options = new LaunchOptions().setHeadless(false);
+            
+            switch (browserName.toLowerCase()) {
+                case "chrome":
+                case "chromium":
+                    browserType = playwright.chromium();
+                    break;
+                case "firefox":
+                    browserType = playwright.firefox();
+                    break;
+                case "webkit":
+                case "safari":
+                    browserType = playwright.webkit();
+                    break;
+                default:
+                    throw new RuntimeException("Unsupported browser: " + browserName);
+            }
+            
+            browser = browserType.launch(options);
+            
+            // Create a browser context with tracing enabled
+            context = browser.newContext(new Browser.NewContextOptions()
+                .setViewportSize(1280, 720)
+                .setRecordVideoDir(Paths.get(System.getProperty("java.io.tmpdir"), "cstestforge_video"))
+                .setIgnoreHTTPSErrors(true));
+            
+            // Create a new page
+            page = context.newPage();
+            
+        } catch (Exception e) {
+            reporter.log("ERROR", "Failed to initialize Playwright: " + e.getMessage());
+            cleanupResources();
+        }
+    }
+    
+    private void cleanupResources() {
+        if (page != null) {
+            try {
+                page.close();
+            } catch (Exception e) {
+                // Ignore page close exceptions
+            }
+            page = null;
+        }
+        
+        if (context != null) {
+            try {
+                context.close();
+            } catch (Exception e) {
+                // Ignore context close exceptions
+            }
+            context = null;
+        }
+        
+        if (browser != null) {
+            try {
+                browser.close();
+            } catch (Exception e) {
+                // Ignore browser close exceptions
+            }
+            browser = null;
+        }
+        
+        if (playwright != null) {
+            try {
+                playwright.close();
+            } catch (Exception e) {
+                // Ignore playwright close exceptions
+            }
+            playwright = null;
+        }
+    }
+    
+    @Override
+    public String getType() {
+        return "playwright";
+    }
+    
+    // BufferedReader class (needed for the executeTypeScriptPlaywrightTest method)
+    private static class BufferedReader {
+        private final java.io.BufferedReader reader;
+        
+        public BufferedReader(InputStreamReader inputStreamReader) {
+            this.reader = new java.io.BufferedReader(inputStreamReader);
+        }
+        
+        public String readLine() throws IOException {
+            return reader.readLine();
+        }
+    }
+    
+    // InputStreamReader class (needed for the executeTypeScriptPlaywrightTest method)
+    private static class InputStreamReader {
+        private final java.io.InputStreamReader reader;
+        
+        public InputStreamReader(java.io.InputStream inputStream) {
+            this.reader = new java.io.InputStreamReader(inputStream);
+        }
+    }
+    
+    // IOException class (needed for various methods)
+    private static class IOException extends Exception {
+        public IOException(String message) {
+            super(message);
+        }
+    }
+}
+
+
+package com.cstestforge.backend.service.export;
+
+import com.cstestforge.backend.model.GeneratedTest;
+import com.cstestforge.backend.model.ProjectStructure;
+import com.cstestforge.backend.model.ExportRequest;
+import com.cstestforge.backend.model.ExportResult;
+import com.cstestforge.backend.service.filesystem.FileSystemService;
+import com.cstestforge.backend.service.config.ConfigurationManager;
+import com.cstestforge.backend.service.codegen.CodeGenerationService;
+
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.io.File;
+import java.io.InputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
+
+@Service
+public class ExportService {
+
+    @Autowired
+    private FileSystemService fileSystemService;
+    
+    @Autowired
+    private ConfigurationManager configManager;
+    
+    @Autowired
+    private CodeGenerationService codeGenService;
+    
+    // Framework template resources paths
+    private static final Map<String, String> FRAMEWORK_TEMPLATES = new HashMap<>();
+    
+    static {
+        // Selenium with Java and TestNG
+        FRAMEWORK_TEMPLATES.put("selenium-java-testng", "/templates/frameworks/selenium-java-testng");
+        
+        // Selenium with Java and BDD
+        FRAMEWORK_TEMPLATES.put("selenium-java-bdd", "/templates/frameworks/selenium-java-bdd");
+        
+        // Playwright with Java and TestNG
+        FRAMEWORK_TEMPLATES.put("playwright-java-testng", "/templates/frameworks/playwright-java-testng");
+        
+        // Playwright with Java and BDD
+        FRAMEWORK_TEMPLATES.put("playwright-java-bdd", "/templates/frameworks/playwright-java-bdd");
+        
+        // Playwright with TypeScript and TestNG
+        FRAMEWORK_TEMPLATES.put("playwright-typescript-testng", "/templates/frameworks/playwright-typescript-testng");
+        
+        // Playwright with TypeScript and BDD
+        FRAMEWORK_TEMPLATES.put("playwright-typescript-bdd", "/templates/frameworks/playwright-typescript-bdd");
+    }
+    
+    /**
+     * Export a test or set of tests to a framework structure
+     * 
+     * @param exportRequest The export request details
+     * @return The result of the export operation
+     */
+    public ExportResult exportTests(ExportRequest exportRequest) {
+        ExportResult result = new ExportResult();
+        result.setStartTime(System.currentTimeMillis());
+        result.setStatus("INITIALIZING");
+        
+        try {
+            // Validate the export request
+            if (exportRequest.getTests() == null || exportRequest.getTests().isEmpty()) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("No tests provided for export");
+                return result;
+            }
+            
+            if (exportRequest.getDestinationPath() == null || exportRequest.getDestinationPath().isEmpty()) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("No destination path provided");
+                return result;
+            }
+            
+            // Get the framework type
+            String frameworkType = exportRequest.getFrameworkType();
+            if (frameworkType == null || frameworkType.isEmpty()) {
+                frameworkType = determineFrameworkType(exportRequest.getTests().get(0));
+            }
+            
+            if (!FRAMEWORK_TEMPLATES.containsKey(frameworkType)) {
+                result.setStatus("FAILED");
+                result.setErrorMessage("Unsupported framework type: " + frameworkType);
+                return result;
+            }
+            
+            // Create a temporary directory for the export
+            Path tempExportDir = Files.createTempDirectory("cstestforge_export_");
+            
+            // Create the framework structure
+            result.setStatus("CREATING_FRAMEWORK");
+            createFrameworkStructure(tempExportDir, frameworkType);
+            
+            // Add the tests to the framework
+            result.setStatus("ADDING_TESTS");
+            addTestsToFramework(tempExportDir, exportRequest.getTests(), frameworkType);
+            
+            // Generate any additional files needed (e.g., test runners)
+            result.setStatus("GENERATING_ADDITIONAL_FILES");
+            generateAdditionalFiles(tempExportDir, exportRequest.getTests(), frameworkType);
+            
+            // Prepare the destination
+            Path destinationPath = Paths.get(exportRequest.getDestinationPath());
+            if (!Files.exists(destinationPath)) {
+                Files.createDirectories(destinationPath);
+            }
+            
+            // If export as ZIP is requested, create a ZIP file
+            if (exportRequest.isExportAsZip()) {
+                result.setStatus("CREATING_ZIP");
+                Path zipPath = destinationPath.resolve(exportRequest.getProjectName() + ".zip");
+                createZipFile(tempExportDir, zipPath);
+                result.setExportedPath(zipPath.toString());
+            } else {
+                // Otherwise, copy the files to the destination
+                result.setStatus("COPYING_FILES");
+                Path projectDir = destinationPath.resolve(exportRequest.getProjectName());
+                if (!Files.exists(projectDir)) {
+                    Files.createDirectories(projectDir);
+                }
+                copyDirectory(tempExportDir, projectDir);
+                result.setExportedPath(projectDir.toString());
+            }
+            
+            // Export completed successfully
+            result.setStatus("COMPLETED");
+            result.setEndTime(System.currentTimeMillis());
+            
+        } catch (Exception e) {
+            result.setStatus("FAILED");
+            result.setErrorMessage("Error during export: " + e.getMessage());
+            
+            // Record stack trace
+            StringBuilder stackTrace = new StringBuilder();
+            for (StackTraceElement element : e.getStackTrace()) {
+                stackTrace.append(element.toString()).append("\n");
+            }
+            result.setStackTrace(stackTrace.toString());
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Determine the framework type based on the test
+     */
+    private String determineFrameworkType(GeneratedTest test) {
+        String tool = test.getTool().toLowerCase();
+        String language = test.getLanguage().toLowerCase();
+        String testType = test.getTestType().toLowerCase();
+        
+        StringBuilder frameworkType = new StringBuilder();
+        frameworkType.append(tool);
+        frameworkType.append("-");
+        frameworkType.append(language);
+        frameworkType.append("-");
+        
+        if (testType.contains("bdd") || testType.contains("cucumber")) {
+            frameworkType.append("bdd");
+        } else {
+            frameworkType.append("testng");
+        }
+        
+        return frameworkType.toString();
+    }
+    
+    /**
+     * Create the framework structure in the export directory
+     */
+    private void createFrameworkStructure(Path exportDir, String frameworkType) throws IOException {
+        String templatePath = FRAMEWORK_TEMPLATES.get(frameworkType);
+        
+        // Read the framework template resources
+        ClassLoader classLoader = getClass().getClassLoader();
+        InputStream templateDirStream = classLoader.getResourceAsStream(templatePath);
+        
+        if (templateDirStream == null) {
+            throw new IOException("Framework template not found: " + templatePath);
+        }
+        
+        // List all resources in the template directory
+        List<String> templateResources = listResourcesInDirectory(templatePath);
+        
+        // Copy each resource to the export directory
+        for (String resource : templateResources) {
+            String relativePath = resource.substring(templatePath.length());
+            Path targetPath = exportDir.resolve(relativePath);
+            
+            // Create parent directories if they don't exist
+            Files.createDirectories(targetPath.getParent());
+            
+            // Copy the resource to the target path
+            try (InputStream resourceStream = classLoader.getResourceAsStream(resource)) {
+                if (resourceStream == null) {
+                    throw new IOException("Resource not found: " + resource);
+                }
+                Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+    
+    /**
+     * List all resources in a directory (including subdirectories)
+     */
+    private List<String> listResourcesInDirectory(String directoryPath) {
+        try {
+            // This would typically use reflection to scan classpath resources
+            // For simplicity in this implementation, we'll use a predefined list
+            
+            List<String> resources = new ArrayList<>();
+            
+            // Common framework files for all types
+            resources.add(directoryPath + "/pom.xml");
+            resources.add(directoryPath + "/README.md");
+            resources.add(directoryPath + "/.gitignore");
+            resources.add(directoryPath + "/src/main/resources/log4j2.xml");
+            resources.add(directoryPath + "/src/main/resources/config.properties");
+            resources.add(directoryPath + "/src/test/resources/testng.xml");
+            
+            // Add framework-specific files
+            if (directoryPath.contains("selenium-java")) {
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSBaseTest.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSBasePage.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSElement.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSWaitStrategy.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSFindBy.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSTestStep.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSReporter.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/ConfigurationManager.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/DriverManager.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSScreenshotManager.java");
+                
+                if (directoryPath.contains("bdd")) {
+                    resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSBDDRunner.java");
+                    resources.add(directoryPath + "/src/test/resources/features/example.feature");
+                    resources.add(directoryPath + "/src/test/java/com/cstestforge/steps/CommonSteps.java");
+                }
+            } else if (directoryPath.contains("playwright-java")) {
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSPlaywrightBaseTest.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSPlaywrightBasePage.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSPlaywrightElement.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSPlaywrightWaitStrategy.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSReporter.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/ConfigurationManager.java");
+                resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/PlaywrightManager.java");
+                
+                if (directoryPath.contains("bdd")) {
+                    resources.add(directoryPath + "/src/main/java/com/cstestforge/framework/CSBDDRunner.java");
+                    resources.add(directoryPath + "/src/test/resources/features/example.feature");
+                    resources.add(directoryPath + "/src/test/java/com/cstestforge/steps/CommonSteps.java");
+                }
+            } else if (directoryPath.contains("playwright-typescript")) {
+                resources.add(directoryPath + "/package.json");
+                resources.add(directoryPath + "/tsconfig.json");
+                resources.add(directoryPath + "/playwright.config.ts");
+                resources.add(directoryPath + "/src/framework/CSBaseTest.ts");
+                resources.add(directoryPath + "/src/framework/CSBasePage.ts");
+                resources.add(directoryPath + "/src/framework/CSElement.ts");
+                resources.add(directoryPath + "/src/framework/CSWaitStrategy.ts");
+                resources.add(directoryPath + "/src/framework/CSReporter.ts");
+                resources.add(directoryPath + "/src/framework/ConfigurationManager.ts");
+                resources.add(directoryPath + "/src/framework/PlaywrightManager.ts");
+                
+                if (directoryPath.contains("bdd")) {
+                    resources.add(directoryPath + "/src/framework/CSBDDRunner.ts");
+                    resources.add(directoryPath + "/src/test/features/example.feature");
+                    resources.add(directoryPath + "/src/test/steps/common.steps.ts");
+                }
+            }
+            
+            return resources;
+        } catch (Exception e) {
+            throw new RuntimeException("Error listing resources: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Add the tests to the framework
+     */
+    private void addTestsToFramework(Path exportDir, List<GeneratedTest> tests, String frameworkType) throws IOException {
+        for (GeneratedTest test : tests) {
+            // Determine the package structure
+            String packagePath = test.getPackageName().replace(".", File.separator);
+            
+            // Determine the file extension
+            String fileExtension = test.getLanguage().equalsIgnoreCase("typescript") ? ".ts" : ".java";
+            
+            // Determine the test path based on framework type
+            Path testDir;
+            if (frameworkType.contains("typescript")) {
+                testDir = exportDir.resolve(Paths.get("src", "test", "specs"));
+            } else {
+                testDir = exportDir.resolve(Paths.get("src", "test", "java", packagePath));
+            }
+            
+            // Create the test directory if it doesn't exist
+            if (!Files.exists(testDir)) {
+                Files.createDirectories(testDir);
+            }
+            
+            // Write the test file
+            Path testFilePath = testDir.resolve(test.getClassName() + fileExtension);
+            Files.write(testFilePath, test.getCode().getBytes());
+            
+            // If it's a BDD test, also create/update feature files
+            if (frameworkType.contains("bdd")) {
+                String featureName = test.getName().replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+                Path featureDir;
+                
+                if (frameworkType.contains("typescript")) {
+                    featureDir = exportDir.resolve(Paths.get("src", "test", "features"));
+                } else {
+                    featureDir = exportDir.resolve(Paths.get("src", "test", "resources", "features"));
+                }
+                
+                if (!Files.exists(featureDir)) {
+                    Files.createDirectories(featureDir);
+                }
+                
+                // Generate the feature file content
+                String featureContent = generateFeatureFileContent(test);
+                
+                // Write the feature file
+                Path featureFilePath = featureDir.resolve(featureName + ".feature");
+                Files.write(featureFilePath, featureContent.getBytes());
+                
+                // Also generate step definitions if needed
+                generateStepDefinitions(exportDir, test, frameworkType);
+            }
+            
+            // Generate page objects if needed
+            if (test.getPageObjects() != null && !test.getPageObjects().isEmpty()) {
+                Path pageObjectDir;
+                if (frameworkType.contains("typescript")) {
+                    pageObjectDir = exportDir.resolve(Paths.get("src", "pages"));
+                } else {
+                    pageObjectDir = exportDir.resolve(Paths.get("src", "main", "java", packagePath, "pages"));
+                }
+                
+                if (!Files.exists(pageObjectDir)) {
+                    Files.createDirectories(pageObjectDir);
+                }
+                
+                for (Map.Entry<String, String> entry : test.getPageObjects().entrySet()) {
+                    String pageObjectName = entry.getKey();
+                    String pageObjectCode = entry.getValue();
+                    
+                    Path pageObjectFilePath = pageObjectDir.resolve(pageObjectName + fileExtension);
+                    Files.write(pageObjectFilePath, pageObjectCode.getBytes());
+                }
+            }
+        }
+    }
+    
+    /**
+     * Generate feature file content for BDD tests
+     */
+    private String generateFeatureFileContent(GeneratedTest test) {
+        StringBuilder featureContent = new StringBuilder();
+        
+        featureContent.append("Feature: ").append(test.getName()).append("\n\n");
+        
+        if (test.getDescription() != null && !test.getDescription().isEmpty()) {
+            featureContent.append("  ").append(test.getDescription()).append("\n\n");
+        }
+        
+        // Create scenarios based on test steps
+        featureContent.append("  Scenario: ").append(test.getName()).append("\n");
+        
+        if (test.getSteps() != null && !test.getSteps().isEmpty()) {
+            for (String step : test.getBddSteps()) {
+                featureContent.append("    ").append(step).append("\n");
+            }
+        } else {
+            featureContent.append("    Given the user navigates to the application\n");
+            featureContent.append("    When the user performs actions\n");
+            featureContent.append("    Then the expected results are verified\n");
+        }
+        
+        return featureContent.toString();
+    }
+    
+    /**
+     * Generate step definitions for BDD tests
+     */
+    private void generateStepDefinitions(Path exportDir, GeneratedTest test, String frameworkType) throws IOException {
+        Path stepDefsDir;
+        String fileExtension;
+        
+        if (frameworkType.contains("typescript")) {
+            stepDefsDir = exportDir.resolve(Paths.get("src", "test", "steps"));
+            fileExtension = ".ts";
+        } else {
+            String packagePath = test.getPackageName().replace(".", File.separator);
+            stepDefsDir = exportDir.resolve(Paths.get("src", "test", "java", packagePath, "steps"));
+            fileExtension = ".java";
+        }
+        
+        if (!Files.exists(stepDefsDir)) {
+            Files.createDirectories(stepDefsDir);
+        }
+        
+        // Generate step definitions
+        String stepDefsContent = codeGenService.generateStepDefinitions(test, frameworkType);
+        
+        // Sanitize the test name for file naming
+        String testNameSanitized = test.getName().replaceAll("[^a-zA-Z0-9]", "");
+        
+        // Write the step definitions file
+        Path stepDefsFilePath = stepDefsDir.resolve(testNameSanitized + "Steps" + fileExtension);
+        Files.write(stepDefsFilePath, stepDefsContent.getBytes());
+    }
+    
+    /**
+     * Generate additional files needed for the framework
+     */
+    private void generateAdditionalFiles(Path exportDir, List<GeneratedTest> tests, String frameworkType) throws IOException {
+        // Generate TestNG XML file for TestNG tests
+        if (frameworkType.contains("testng")) {
+            generateTestNgXml(exportDir, tests, frameworkType);
+        }
+        
+        // Generate runner class for BDD tests
+        if (frameworkType.contains("bdd")) {
+            generateBddRunner(exportDir, tests, frameworkType);
+        }
+        
+        // Generate README.md with usage instructions
+        generateReadme(exportDir, tests, frameworkType);
+    }
+    
+    /**
+     * Generate TestNG XML file
+     */
+    private void generateTestNgXml(Path exportDir, List<GeneratedTest> tests, String frameworkType) throws IOException {
+        StringBuilder testngXml = new StringBuilder();
+        testngXml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        testngXml.append("<!DOCTYPE suite SYSTEM \"https://testng.org/testng-1.0.dtd\">\n");
+        testngXml.append("<suite name=\"CSTestForge Generated Suite\" parallel=\"tests\" thread-count=\"1\">\n");
+        
+        // Add separate test for each generated test
+        for (GeneratedTest test : tests) {
+            testngXml.append("  <test name=\"").append(test.getName()).append("\">\n");
+            testngXml.append("    <classes>\n");
+            testngXml.append("      <class name=\"").append(test.getPackageName()).append(".")
+                    .append(test.getClassName()).append("\"/>\n");
+            testngXml.append("    </classes>\n");
+            testngXml.append("  </test>\n");
+        }
+        
+        testngXml.append("</suite>\n");
+        
+        // Write the TestNG XML file
+        Path testngXmlPath;
+        if (frameworkType.contains("typescript")) {
+            testngXmlPath = exportDir.resolve("testng.xml");
+        } else {
+            testngXmlPath = exportDir.resolve(Paths.get("src", "test", "resources", "testng.xml"));
+        }
+        
+        Files.write(testngXmlPath, testngXml.toString().getBytes());
+    }
+    
+    /**
+     * Generate BDD runner class
+     */
+    private void generateBddRunner(Path exportDir, List<GeneratedTest> tests, String frameworkType) throws IOException {
+        String runnerContent;
+        Path runnerPath;
+        
+        if (frameworkType.contains("typescript")) {
+            runnerContent = "import { CucumberTestRunner } from '../framework/CSBDDRunner';\n\n"
+                    + "// This class is used to run BDD tests with TestNG\n"
+                    + "class TestRunner extends CucumberTestRunner {\n"
+                    + "  constructor() {\n"
+                    + "    super();\n"
+                    + "    this.setFeaturePath('src/test/features');\n"
+                    + "    this.setGlue('src/test/steps');\n"
+                    + "  }\n"
+                    + "}\n\n"
+                    + "export default TestRunner;\n";
+                    
+            runnerPath = exportDir.resolve(Paths.get("src", "test", "runner", "TestRunner.ts"));
+        } else {
+            String packageName = tests.get(0).getPackageName();
+            
+            runnerContent = "package " + packageName + ".runner;\n\n"
+                    + "import com.cstestforge.framework.CSBDDRunner;\n"
+                    + "import io.cucumber.testng.CucumberOptions;\n\n"
+                    + "@CucumberOptions(\n"
+                    + "    features = {\"src/test/resources/features\"},\n"
+                    + "    glue = {\"" + packageName + ".steps\"},\n"
+                    + "    plugin = {\"pretty\", \"html:target/cucumber-reports\"}\n"
+                    + ")\n"
+                    + "public class TestRunner extends CSBDDRunner {\n"
+                    + "    // This class is used to run BDD tests with TestNG\n"
+                    + "}\n";
+                    
+            String packagePath = packageName.replace(".", File.separator);
+            Path runnerDir = exportDir.resolve(Paths.get("src", "test", "java", packagePath, "runner"));
+            
+            if (!Files.exists(runnerDir)) {
+                Files.createDirectories(runnerDir);
+            }
+            
+            runnerPath = runnerDir.resolve("TestRunner.java");
+        }
+        
+        Files.write(runnerPath, runnerContent.getBytes());
+    }
+    
+    /**
+     * Generate README.md with usage instructions
+     */
+    private void generateReadme(Path exportDir, List<GeneratedTest> tests, String frameworkType) throws IOException {
+        StringBuilder readme = new StringBuilder();
+        
+        readme.append("# CSTestForge Generated Test Framework\n\n");
+        readme.append("This test framework was automatically generated by CSTestForge.\n\n");
+        
+        readme.append("## Framework Information\n\n");
+        readme.append("- **Framework Type**: ").append(frameworkType).append("\n");
+        
+        readme.append("- **Tests Included**:\n");
+        for (GeneratedTest test : tests) {
+            readme.append("  - ").append(test.getName()).append("\n");
+        }
+        
+        readme.append("\n## How to Run the Tests\n\n");
+        
+        if (frameworkType.contains("typescript")) {
+            readme.append("### Prerequisites\n\n");
+            readme.append("- Node.js (v14 or higher)\n");
+            readme.append("- npm (v6 or higher)\n\n");
+            
+            readme.append("### Installation\n\n");
+            readme.append("```\n");
+            readme.append("npm install\n");
+            readme.append("npx playwright install\n");
+            readme.append("```\n\n");
+            
+            readme.append("### Running Tests\n\n");
+            
+            if (frameworkType.contains("testng")) {
+                readme.append("```\n");
+                readme.append("npm test\n");
+                readme.append("```\n\n");
+            } else {
+                readme.append("```\n");
+                readme.append("npm run cucumber\n");
+                readme.append("```\n\n");
+            }
+        } else {
+            readme.append("### Prerequisites\n\n");
+            readme.append("- Java JDK 17 or higher\n");
+            readme.append("- Maven 3.8 or higher\n\n");
+            
+            readme.append("### Running Tests\n\n");
+            readme.append("```\n");
+            readme.append("mvn clean test\n");
+            readme.append("```\n\n");
+        }
+        
+        readme.append("## Test Reports\n\n");
+        
+        if (frameworkType.contains("typescript")) {
+            readme.append("Test reports are generated in the `test-results` directory after running the tests.\n\n");
+        } else {
+            readme.append("Test reports are generated in the `target/surefire-reports` directory for TestNG tests and `target/cucumber-reports` for BDD tests.\n\n");
+        }
+        
+        readme.append("## Framework Structure\n\n");
+        
+        if (frameworkType.contains("typescript")) {
+            readme.append("```\n");
+            readme.append("src/\n");
+            readme.append("  framework/   # Framework core classes\n");
+            readme.append("  pages/       # Page objects\n");
+            readme.append("  test/\n");
+            readme.append("    specs/     # Test specifications\n");
+            
+            if (frameworkType.contains("bdd")) {
+                readme.append("    features/  # BDD feature files\n");
+                readme.append("    steps/     # BDD step definitions\n");
+                readme.append("    runner/    # BDD test runner\n");
+            }
+            
+            readme.append("playwright.config.ts  # Playwright configuration\n");
+            readme.append("package.json          # NPM dependencies\n");
+            readme.append("tsconfig.json         # TypeScript configuration\n");
+            readme.append("```\n\n");
+        } else {
+            readme.append("```\n");
+            readme.append("src/\n");
+            readme.append("  main/\n");
+            readme.append("    java/\n");
+            readme.append("      com/cstestforge/framework/  # Framework core classes\n");
+            readme.append("      [package]/pages/            # Page objects\n");
+            readme.append("    resources/\n");
+            readme.append("      config.properties           # Configuration\n");
+            readme.append("      log4j2.xml                  # Logging configuration\n");
+            readme.append("  test/\n");
+            readme.append("    java/\n");
+            readme.append("      [package]/                  # Test classes\n");
+            
+            if (frameworkType.contains("bdd")) {
+              readme.append("      [package]/steps/           # BDD step definitions\n");
+                readme.append("      [package]/runner/          # BDD test runner\n");
+                readme.append("    resources/\n");
+                readme.append("      features/                  # BDD feature files\n");
+            }
+            
+            readme.append("pom.xml                          # Maven dependencies\n");
+            readme.append("```\n\n");
+        }
+        
+        readme.append("## Customizing the Framework\n\n");
+        readme.append("The generated framework includes custom classes that can be extended for additional functionality:\n\n");
+        
+        if (frameworkType.contains("selenium")) {
+            readme.append("- `CSBaseTest`: Base class for all test classes\n");
+            readme.append("- `CSBasePage`: Base class for all page objects\n");
+            readme.append("- `CSElement`: Enhanced wrapper around WebElement\n");
+            readme.append("- `CSWaitStrategy`: Custom wait strategies\n");
+            readme.append("- `CSReporter`: Custom reporting functionality\n");
+        } else if (frameworkType.contains("playwright")) {
+            if (frameworkType.contains("java")) {
+                readme.append("- `CSPlaywrightBaseTest`: Base class for all test classes\n");
+                readme.append("- `CSPlaywrightBasePage`: Base class for all page objects\n");
+                readme.append("- `CSPlaywrightElement`: Enhanced wrapper around Playwright Locator\n");
+                readme.append("- `CSPlaywrightWaitStrategy`: Custom wait strategies\n");
+                readme.append("- `CSReporter`: Custom reporting functionality\n");
+            } else {
+                readme.append("- `CSBaseTest`: Base class for all test classes\n");
+                readme.append("- `CSBasePage`: Base class for all page objects\n");
+                readme.append("- `CSElement`: Enhanced wrapper around Playwright Locator\n");
+                readme.append("- `CSWaitStrategy`: Custom wait strategies\n");
+                readme.append("- `CSReporter`: Custom reporting functionality\n");
+            }
+        }
+        
+        // Write the README.md file
+        Path readmePath = exportDir.resolve("README.md");
+        Files.write(readmePath, readme.toString().getBytes());
+    }
+    
+    /**
+     * Create a ZIP file from a directory
+     */
+    private void createZipFile(Path sourceDir, Path zipPath) throws IOException {
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipPath.toFile()))) {
+            Files.walk(sourceDir)
+                .filter(path -> !Files.isDirectory(path))
+                .forEach(path -> {
+                    ZipEntry zipEntry = new ZipEntry(sourceDir.relativize(path).toString());
+                    try {
+                        zos.putNextEntry(zipEntry);
+                        Files.copy(path, zos);
+                        zos.closeEntry();
+                    } catch (IOException e) {
+                        throw new RuntimeException("Error creating ZIP file: " + e.getMessage(), e);
+                    }
+                });
+        }
+    }
+    
+    /**
+     * Copy a directory recursively
+     */
+    private void copyDirectory(Path sourceDir, Path targetDir) throws IOException {
+        Files.walk(sourceDir)
+            .forEach(source -> {
+                try {
+                    Path target = targetDir.resolve(sourceDir.relativize(source));
+                    if (Files.isDirectory(source)) {
+                        if (!Files.exists(target)) {
+                            Files.createDirectories(target);
+                        }
+                    } else {
+                        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Error copying files: " + e.getMessage(), e);
+                }
+            });
+    }
+    
+    /**
+     * Import a project from the file system
+     */
+    public ProjectStructure importProject(String projectPath) throws IOException {
+        // Validate the project path
+        Path path = Paths.get(projectPath);
+        if (!Files.exists(path)) {
+            throw new IOException("Project path does not exist: " + projectPath);
+        }
+        
+        // Create a project structure
+        ProjectStructure project = new ProjectStructure();
+        project.setName(path.getFileName().toString());
+        project.setPath(projectPath);
+        
+        // Determine the framework type
+        String frameworkType = determineFrameworkType(path);
+        project.setFrameworkType(frameworkType);
+        
+        // Find all tests in the project
+        List<GeneratedTest> tests = findTestsInProject(path, frameworkType);
+        project.setTests(tests);
+        
+        return project;
+    }
+    
+    /**
+     * Determine the framework type of an existing project
+     */
+    private String determineFrameworkType(Path projectPath) {
+        try {
+            // Check for TypeScript files
+            boolean hasTypeScript = Files.walk(projectPath)
+                .anyMatch(path -> path.toString().endsWith(".ts"));
+            
+            // Check for Java files
+            boolean hasJava = Files.walk(projectPath)
+                .anyMatch(path -> path.toString().endsWith(".java"));
+            
+            // Check for Selenium
+            boolean hasSelenium = Files.walk(projectPath)
+                .anyMatch(path -> {
+                    String content = readFileContent(path);
+                    return content != null && (content.contains("import org.openqa.selenium") || 
+                                               content.contains("from 'selenium-webdriver'"));
+                });
+            
+            // Check for Playwright
+            boolean hasPlaywright = Files.walk(projectPath)
+                .anyMatch(path -> {
+                    String content = readFileContent(path);
+                    return content != null && (content.contains("import com.microsoft.playwright") || 
+                                              content.contains("from '@playwright/test'"));
+                });
+            
+            // Check for BDD
+            boolean hasBdd = Files.walk(projectPath)
+                .anyMatch(path -> path.toString().endsWith(".feature") || 
+                                 path.toString().contains("cucumber"));
+            
+            // Determine the framework type
+            StringBuilder frameworkType = new StringBuilder();
+            
+            if (hasSelenium) {
+                frameworkType.append("selenium");
+            } else if (hasPlaywright) {
+                frameworkType.append("playwright");
+            } else {
+                return "unknown";
+            }
+            
+            frameworkType.append("-");
+            
+            if (hasTypeScript) {
+                frameworkType.append("typescript");
+            } else if (hasJava) {
+                frameworkType.append("java");
+            } else {
+                return "unknown";
+            }
+            
+            frameworkType.append("-");
+            
+            if (hasBdd) {
+                frameworkType.append("bdd");
+            } else {
+                frameworkType.append("testng");
+            }
+            
+            return frameworkType.toString();
+        } catch (IOException e) {
+            return "unknown";
+        }
+    }
+    
+    /**
+     * Find all tests in a project
+     */
+    private List<GeneratedTest> findTestsInProject(Path projectPath, String frameworkType) throws IOException {
+        List<GeneratedTest> tests = new ArrayList<>();
+        
+        // Find test files based on framework type
+        if (frameworkType.contains("typescript")) {
+            // Find TypeScript test files
+            List<Path> testFiles = Files.walk(projectPath)
+                .filter(path -> path.toString().endsWith(".spec.ts") || 
+                               path.toString().contains("/test/") && path.toString().endsWith(".ts"))
+                .collect(Collectors.toList());
+            
+            for (Path testFile : testFiles) {
+                GeneratedTest test = parseTypeScriptTest(testFile, frameworkType);
+                if (test != null) {
+                    tests.add(test);
+                }
+            }
+        } else if (frameworkType.contains("java")) {
+            // Find Java test files
+            List<Path> testFiles = Files.walk(projectPath)
+                .filter(path -> path.toString().endsWith("Test.java") || 
+                               path.toString().contains("/test/") && path.toString().endsWith(".java"))
+                .collect(Collectors.toList());
+            
+            for (Path testFile : testFiles) {
+                GeneratedTest test = parseJavaTest(testFile, frameworkType);
+                if (test != null) {
+                    tests.add(test);
+                }
+            }
+        }
+        
+        return tests;
+    }
+    
+    /**
+     * Parse a TypeScript test file
+     */
+    private GeneratedTest parseTypeScriptTest(Path testFile, String frameworkType) {
+        try {
+            String content = readFileContent(testFile);
+            if (content == null) {
+                return null;
+            }
+            
+            GeneratedTest test = new GeneratedTest();
+            test.setId(generateTestId());
+            test.setClassName(testFile.getFileName().toString().replace(".spec.ts", "").replace(".ts", ""));
+            test.setCode(content);
+            test.setLanguage("typescript");
+            
+            // Determine the tool
+            if (frameworkType.contains("playwright")) {
+                test.setTool("playwright");
+            } else {
+                test.setTool("selenium");
+            }
+            
+            // Determine the test type
+            if (frameworkType.contains("bdd")) {
+                test.setTestType("bdd");
+            } else {
+                test.setTestType("testng");
+            }
+            
+            // Extract test name
+            String testName = extractTypeScriptTestName(content);
+            test.setName(testName != null ? testName : test.getClassName());
+            
+            // Extract browser
+            String browser = extractTypeScriptBrowser(content);
+            test.setBrowser(browser != null ? browser : "chromium");
+            
+            return test;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Parse a Java test file
+     */
+    private GeneratedTest parseJavaTest(Path testFile, String frameworkType) {
+        try {
+            String content = readFileContent(testFile);
+            if (content == null) {
+                return null;
+            }
+            
+            GeneratedTest test = new GeneratedTest();
+            test.setId(generateTestId());
+            test.setClassName(testFile.getFileName().toString().replace(".java", ""));
+            test.setCode(content);
+            test.setLanguage("java");
+            
+            // Extract package name
+            String packageName = extractJavaPackageName(content);
+            test.setPackageName(packageName != null ? packageName : "com.cstestforge.tests");
+            
+            // Determine the tool
+            if (frameworkType.contains("playwright")) {
+                test.setTool("playwright");
+            } else {
+                test.setTool("selenium");
+            }
+            
+            // Determine the test type
+            if (frameworkType.contains("bdd")) {
+                test.setTestType("bdd");
+            } else {
+                test.setTestType("testng");
+            }
+            
+            // Extract test name
+            String testName = extractJavaTestName(content);
+            test.setName(testName != null ? testName : test.getClassName());
+            
+            // Extract browser
+            String browser = extractJavaBrowser(content);
+            test.setBrowser(browser != null ? browser : "chrome");
+            
+            return test;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Read the content of a file
+     */
+    private String readFileContent(Path filePath) {
+        try {
+            if (Files.isRegularFile(filePath)) {
+                return new String(Files.readAllBytes(filePath));
+            }
+            return null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Extract TypeScript test name from content
+     */
+    private String extractTypeScriptTestName(String content) {
+        // Look for test or it functions
+        int testIndex = content.indexOf("test('");
+        if (testIndex != -1) {
+            int nameStartIndex = testIndex + 6;
+            int nameEndIndex = content.indexOf("'", nameStartIndex);
+            if (nameEndIndex != -1) {
+                return content.substring(nameStartIndex, nameEndIndex);
+            }
+        }
+        
+        testIndex = content.indexOf("test(\"");
+        if (testIndex != -1) {
+            int nameStartIndex = testIndex + 6;
+            int nameEndIndex = content.indexOf("\"", nameStartIndex);
+            if (nameEndIndex != -1) {
+                return content.substring(nameStartIndex, nameEndIndex);
+            }
+        }
+        
+        testIndex = content.indexOf("it('");
+        if (testIndex != -1) {
+            int nameStartIndex = testIndex + 4;
+            int nameEndIndex = content.indexOf("'", nameStartIndex);
+            if (nameEndIndex != -1) {
+                return content.substring(nameStartIndex, nameEndIndex);
+            }
+        }
+        
+        testIndex = content.indexOf("it(\"");
+        if (testIndex != -1) {
+            int nameStartIndex = testIndex + 4;
+            int nameEndIndex = content.indexOf("\"", nameStartIndex);
+            if (nameEndIndex != -1) {
+                return content.substring(nameStartIndex, nameEndIndex);
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract TypeScript browser from content
+     */
+    private String extractTypeScriptBrowser(String content) {
+        // Look for browser declarations
+        if (content.contains("chromium.launch")) {
+            return "chromium";
+        } else if (content.contains("firefox.launch")) {
+            return "firefox";
+        } else if (content.contains("webkit.launch")) {
+            return "webkit";
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract Java package name from content
+     */
+    private String extractJavaPackageName(String content) {
+        int packageIndex = content.indexOf("package ");
+        if (packageIndex != -1) {
+            int nameStartIndex = packageIndex + 8;
+            int nameEndIndex = content.indexOf(";", nameStartIndex);
+            if (nameEndIndex != -1) {
+                return content.substring(nameStartIndex, nameEndIndex).trim();
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract Java test name from content
+     */
+    private String extractJavaTestName(String content) {
+        // Look for @Test annotations
+        int testIndex = content.indexOf("@Test");
+        if (testIndex != -1) {
+            // Find the method after the @Test annotation
+            int methodIndex = content.indexOf("public void ", testIndex);
+            if (methodIndex != -1) {
+                int nameStartIndex = methodIndex + 12;
+                int nameEndIndex = content.indexOf("(", nameStartIndex);
+                if (nameEndIndex != -1) {
+                    String methodName = content.substring(nameStartIndex, nameEndIndex).trim();
+                    // Convert camelCase to readable format
+                    return camelCaseToReadable(methodName);
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract Java browser from content
+     */
+    private String extractJavaBrowser(String content) {
+        // Look for browser declarations
+        if (content.contains("ChromeDriver")) {
+            return "chrome";
+        } else if (content.contains("FirefoxDriver")) {
+            return "firefox";
+        } else if (content.contains("EdgeDriver")) {
+            return "edge";
+        } else if (content.contains("SafariDriver")) {
+            return "safari";
+        } else if (content.contains("playwright.chromium()")) {
+            return "chromium";
+        } else if (content.contains("playwright.firefox()")) {
+            return "firefox";
+        } else if (content.contains("playwright.webkit()")) {
+            return "webkit";
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Convert camelCase to readable format
+     */
+    private String camelCaseToReadable(String camelCase) {
+        if (camelCase == null || camelCase.isEmpty()) {
+            return camelCase;
+        }
+        
+        StringBuilder result = new StringBuilder();
+        result.append(Character.toUpperCase(camelCase.charAt(0)));
+        
+        for (int i = 1; i < camelCase.length(); i++) {
+            char c = camelCase.charAt(i);
+            if (Character.isUpperCase(c)) {
+                result.append(' ');
+            }
+            result.append(c);
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * Generate a unique test ID
+     */
+    private String generateTestId() {
+        return "test_" + System.currentTimeMillis() + "_" + Math.abs(new java.util.Random().nextInt(1000));
+    }
+}
+
+
+/**
+ * CSTestForge Recorder Injector Script
+ * 
+ * This script is injected into the target application to capture user actions
+ * and send them back to the test recorder.
+ */
+(function() {
+    // Ensure the script is only injected once
+    if (window.__csTestForgeRecorderInjected) {
+        return;
+    }
+    window.__csTestForgeRecorderInjected = true;
+    
+    // Configuration - will be replaced with actual config from server
+    const config = {
+        serverUrl: 'http://localhost:8080',
+        recordingId: '',
+        frameId: '',
+        isTopFrame: window === window.top,
+        captureScreenshots: true,
+        captureNetwork: true,
+        captureConsole: true,
+        smartWaitEnabled: true,
+        aiLocatorsEnabled: true,
+        excludedElements: ['.cs-testforge-highlight', '.cs-testforge-toolbar']
+    };
+
+    // Utility functions
+    const utils = {
+        /**
+         * Generate a unique ID
+         */
+        generateId: function() {
+            return 'cs_' + Math.random().toString(36).substr(2, 9);
+        },
+        
+        /**
+         * Get XPath for an element
+         */
+        getXPath: function(element) {
+            if (element.id) {
+                return `//*[@id="${element.id}"]`;
+            }
+            
+            if (element === document.body) {
+                return '/html/body';
+            }
+            
+            if (!element.parentNode) {
+                return '';
+            }
+            
+            let siblings = element.parentNode.childNodes;
+            let count = 0;
+            let index = -1;
+            
+            for (let i = 0; i < siblings.length; i++) {
+                let sibling = siblings[i];
+                
+                if (sibling.nodeType === 1 && sibling.tagName === element.tagName) {
+                    count++;
+                }
+                
+                if (sibling === element) {
+                    index = count;
+                }
+            }
+            
+            if (index === -1) {
+                return '';
+            }
+            
+            if (count === 1) {
+                return utils.getXPath(element.parentNode) + '/' + element.tagName.toLowerCase();
+            } else {
+                return utils.getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + index + ']';
+            }
+        },
+        
+        /**
+         * Get CSS selector for an element
+         */
+        getCssSelector: function(element) {
+            if (element.id) {
+                return '#' + element.id;
+            }
+            
+            if (element.classList && element.classList.length > 0) {
+                const classSelector = Array.from(element.classList)
+                    .map(c => '.' + c)
+                    .join('');
+                return element.tagName.toLowerCase() + classSelector;
+            }
+            
+            if (element === document.body) {
+                return 'body';
+            }
+            
+            // Generate a specific selector based on parent-child relationships
+            const parentSelector = element.parentNode === document.body
+                ? 'body'
+                : utils.getCssSelector(element.parentNode);
+                
+            return parentSelector + ' > ' + element.tagName.toLowerCase() + ':nth-child(' + Array.from(element.parentNode.children).indexOf(element) + 1 + ')';
+        },
+        
+        /**
+         * Get all attributes of an element
+         */
+        getElementAttributes: function(element) {
+            const attributes = {};
+            
+            if (!element || !element.attributes) {
+                return attributes;
+            }
+            
+            for (let i = 0; i < element.attributes.length; i++) {
+                const attr = element.attributes[i];
+                attributes[attr.name] = attr.value;
+            }
+            
+            return attributes;
+        },
+        
+        /**
+         * Get text content of an element
+         */
+        getElementText: function(element) {
+            return element.textContent ? element.textContent.trim() : '';
+        },
+        
+        /**
+         * Get value of an input element
+         */
+        getElementValue: function(element) {
+            if (!element) {
+                return null;
+            }
+            
+            if (element.tagName === 'INPUT') {
+                if (element.type === 'checkbox' || element.type === 'radio') {
+                    return element.checked;
+                } else {
+                    return element.value;
+                }
+            } else if (element.tagName === 'SELECT') {
+                return element.value;
+            } else if (element.tagName === 'TEXTAREA') {
+                return element.value;
+            }
+            
+            return null;
+        },
+        
+        /**
+         * Check if an element is visible
+         */
+        isElementVisible: function(element) {
+            if (!element) {
+                return false;
+            }
+            
+            const style = window.getComputedStyle(element);
+            
+            return style.display !== 'none' &&
+                   style.visibility !== 'hidden' &&
+                   style.opacity !== '0' &&
+                   element.offsetWidth > 0 &&
+                   element.offsetHeight > 0;
+        },
+        
+        /**
+         * Get element bounds
+         */
+        getElementBounds: function(element) {
+            const rect = element.getBoundingClientRect();
+            
+            return {
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+                x: rect.x,
+                y: rect.y
+            };
+        },
+        
+        /**
+         * Serialize an element for transmission
+         */
+        serializeElement: function(element) {
+            if (!element) {
+                return null;
+            }
+            
+            return {
+                tagName: element.tagName,
+                id: element.id,
+                className: element.className,
+                name: element.name,
+                type: element.type,
+                value: utils.getElementValue(element),
+                text: utils.getElementText(element),
+                attributes: utils.getElementAttributes(element),
+                xpath: utils.getXPath(element),
+                cssSelector: utils.getCssSelector(element),
+                bounds: utils.getElementBounds(element),
+                visible: utils.isElementVisible(element)
+            };
+        },
+        
+        /**
+         * Generate smart locators for an element using AI techniques
+         */
+        generateSmartLocators: function(element) {
+            const locators = [];
+            
+            // Get the direct id selector if available
+            if (element.id) {
+                locators.push({
+                    type: 'id',
+                    value: element.id,
+                    priority: 100,
+                    robustness: 'high'
+                });
+            }
+            
+            // Get direct name attribute if available
+            if (element.name) {
+                locators.push({
+                    type: 'name',
+                    value: element.name,
+                    priority: 90,
+                    robustness: 'high'
+                });
+            }
+            
+            // CSS selectors
+            try {
+                // Try to generate a unique CSS selector using the element text
+                if (element.textContent && element.textContent.trim().length > 0) {
+                    const text = element.textContent.trim();
+                    if (text.length < 50) { // Avoid long text
+                        // Check if this selector is unique
+                        const textSelector = `${element.tagName.toLowerCase()}:contains("${text}")`;
+                        
+                        locators.push({
+                            type: 'cssSelector',
+                            value: textSelector,
+                            priority: 85,
+                            robustness: 'medium'
+                        });
+                    }
+                }
+                
+                // Get a specific class-based selector if the element has distinctive classes
+                if (element.classList && element.classList.length > 0) {
+                    const classes = Array.from(element.classList);
+                    
+                    classes.forEach(className => {
+                        if (!className.includes('ng-') && !className.includes('ui-')) {
+                            const classSelector = `.${className}`;
+                            
+                            // Check if this selector is specific enough
+                            const matchingElements = document.querySelectorAll(classSelector);
+                            
+                            if (matchingElements.length === 1) {
+                                locators.push({
+                                    type: 'cssSelector',
+                                    value: classSelector,
+                                    priority: 80,
+                                    robustness: 'high'
+                                });
+                            } else if (matchingElements.length < 5) {
+                                // If there are fewer than 5 matches, try to create a more specific selector
+                                const specificSelector = `${element.tagName.toLowerCase()}${classSelector}`;
+                                const specificMatches = document.querySelectorAll(specificSelector);
+                                
+                                if (specificMatches.length === 1) {
+                                    locators.push({
+                                        type: 'cssSelector',
+                                        value: specificSelector,
+                                        priority: 75,
+                                        robustness: 'high'
+                                    });
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                // Get attribute-based selectors
+                const relevantAttributes = ['role', 'aria-label', 'data-test', 'data-test-id', 'data-testid', 
+                                          'data-qa', 'data-cy', 'data-e2e', 'data-automation'];
+                                          
+                for (const attr of relevantAttributes) {
+                    if (element.hasAttribute(attr)) {
+                        const attrValue = element.getAttribute(attr);
+                        const attrSelector = `[${attr}="${attrValue}"]`;
+                        
+                        // Check if this selector is specific enough
+                        const matchingElements = document.querySelectorAll(attrSelector);
+                        
+                        if (matchingElements.length === 1) {
+                            locators.push({
+                                type: 'cssSelector',
+                                value: attrSelector,
+                                priority: 95,
+                                robustness: 'high'
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error generating CSS selectors:', e);
+            }
+            
+            // XPath selectors
+            try {
+                // Simplified XPath
+                const tagName = element.tagName.toLowerCase();
+                
+                // XPath by text content
+                if (element.textContent && element.textContent.trim().length > 0) {
+                    const text = element.textContent.trim();
+                    if (text.length < 50) { // Avoid long text
+                        const textXpath = `//${tagName}[text()="${text}"]`;
+                        
+                        locators.push({
+                            type: 'xpath',
+                            value: textXpath,
+                            priority: 70,
+                            robustness: 'medium'
+                        });
+                        
+                        // Text contains for partial matches
+                        const textContainsXpath = `//${tagName}[contains(text(),"${text.substring(0, Math.min(10, text.length))}")]`;
+                        
+                        locators.push({
+                            type: 'xpath',
+                            value: textContainsXpath,
+                            priority: 60,
+                            robustness: 'low'
+                        });
+                    }
+                }
+                
+                // Complex XPath as a fallback
+                locators.push({
+                    type: 'xpath',
+                    value: utils.getXPath(element),
+                    priority: 50,
+                    robustness: 'low'
+                });
+            } catch (e) {
+                console.error('Error generating XPath selectors:', e);
+            }
+            
+            // Sort locators by priority
+            return locators.sort((a, b) => b.priority - a.priority);
+        },
+        
+        /**
+         * Take a screenshot of the current page
+         */
+        takeScreenshot: function() {
+            if (!config.captureScreenshots) {
+                return null;
+            }
+            
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                
+                const context = canvas.getContext('2d');
+                context.drawWindow(window, 0, 0, window.innerWidth, window.innerHeight, 'rgb(255,255,255)');
+                
+                return canvas.toDataURL('image/png');
+            } catch (e) {
+                // HTML2Canvas fallback would go here in a real implementation
+                console.error('Native screenshot failed:', e);
+                return null;
+            }
+        },
+        
+        /**
+         * Extract information about the current DOM state
+         */
+        getDomSnapshot: function() {
+            return {
+                url: window.location.href,
+                title: document.title,
+                timestamp: new Date().toISOString()
+            };
+        },
+        
+        /**
+         * Check if an element should be excluded from recording
+         */
+        isExcludedElement: function(element) {
+            if (!element) {
+                return true;
+            }
+            
+            // Check if the element is in the excluded list
+            for (const selector of config.excludedElements) {
+                if (element.matches && element.matches(selector)) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+    };
+
+    // Event handling
+    const eventHandler = {
+        // Store pending events
+        pendingEvents: [],
+        
+        // Last recorded event timestamp to avoid duplicates
+        lastEventTime: 0,
+        
+        // Actively ignored elements
+        ignoredElements: new Set(),
+        
+        // Last element that received a mousedown event
+        lastMousedownElement: null,
+        
+        // Last element that received a mouseover event
+        lastMouseoverElement: null,
+        
+        /**
+         * Initialize event listeners
+         */
+        init: function() {
+            const events = [
+                { type: 'click', handler: this.handleClick.bind(this), capture: true },
+                { type: 'input', handler: this.handleInput.bind(this), capture: true },
+                { type: 'change', handler: this.handleChange.bind(this), capture: true },
+                { type: 'submit', handler: this.handleSubmit.bind(this), capture: true },
+                { type: 'keydown', handler: this.handleKeydown.bind(this), capture: true },
+                { type: 'mousedown', handler: this.handleMousedown.bind(this), capture: true },
+                { type: 'mouseover', handler: this.handleMouseover.bind(this), capture: true },
+                { type: 'dragstart', handler: this.handleDragStart.bind(this), capture: true },
+                { type: 'drop', handler: this.handleDrop.bind(this), capture: true },
+                { type: 'focus', handler: this.handleFocus.bind(this), capture: true },
+                { type: 'blur', handler: this.handleBlur.bind(this), capture: true },
+                { type: 'contextmenu', handler: this.handleContextMenu.bind(this), capture: true }
+            ];
+            
+            // Add all event listeners
+            events.forEach(event => {
+                document.addEventListener(event.type, event.handler, event.capture);
+            });
+            
+            // Hook into history API
+            this.hookHistoryAPI();
+            
+            // Network request monitoring
+            if (config.captureNetwork) {
+                this.hookXHR();
+                this.hookFetch();
+            }
+            
+            // Console logging
+            if (config.captureConsole) {
+                this.hookConsole();
+            }
+            
+            // Handle navigation events
+            window.addEventListener('hashchange', this.handleNavigation.bind(this), true);
+            window.addEventListener('popstate', this.handleNavigation.bind(this), true);
+            
+            // Set up periodic event transmission
+            setInterval(this.transmitEvents.bind(this), 500);
+        },
+        
+        /**
+         * Record an event
+         */
+        recordEvent: function(eventType, element, additionalData = {}) {
+            // Skip recording if the element should be excluded
+            if (utils.isExcludedElement(element)) {
+                return;
+            }
+            
+            // Avoid duplicate events
+            const now = Date.now();
+            if (now - this.lastEventTime < 50 && eventType !== 'navigation') {
+                return;
+            }
+            this.lastEventTime = now;
+            
+            // Create the event object
+            const event = {
+                id: utils.generateId(),
+                type: eventType,
+                timestamp: now,
+                frameId: config.frameId,
+                target: utils.serializeElement(element),
+                locators: config.aiLocatorsEnabled ? utils.generateSmartLocators(element) : [],
+                pageState: utils.getDomSnapshot(),
+                ...additionalData
+            };
+            
+            // Add the event to the pending list
+            this.pendingEvents.push(event);
+            
+            // Smart wait detection
+            if (config.smartWaitEnabled) {
+                this.detectNetworkActivity();
+                this.detectDomChanges();
+                this.detectAnimations();
+            }
+        },
+        
+        /**
+         * Transmit pending events to the server
+         */
+        transmitEvents: function() {
+            if (this.pendingEvents.length === 0) {
+                return;
+            }
+            
+            const events = [...this.pendingEvents];
+            this.pendingEvents = [];
+            
+            // Add a screenshot if configured
+            let screenshot = null;
+            if (config.captureScreenshots && config.isTopFrame) {
+                screenshot = utils.takeScreenshot();
+            }
+            
+            // Create the payload
+            const payload = {
+                recordingId: config.recordingId,
+                frameId: config.frameId,
+                url: window.location.href,
+                events: events,
+                screenshot: screenshot
+            };
+            
+            // Send the events to the server
+            fetch(`${config.serverUrl}/api/recorder/events`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }).catch(error => {
+                console.error('Error sending events to server:', error);
+                // Re-add the events to the pending list
+                this.pendingEvents.push(...events);
+            });
+        },
+        
+        // Event handlers
+        
+        /**
+         * Handle click events
+         */
+        handleClick: function(e) {
+            // Skip if we're ignoring this element
+            if (this.ignoredElements.has(e.target)) {
+                return;
+            }
+            
+            this.recordEvent('click', e.target, {
+                button: e.button,
+                altKey: e.altKey,
+                ctrlKey: e.ctrlKey,
+                shiftKey: e.shiftKey,
+                metaKey: e.metaKey
+            });
+        },
+        
+        /**
+         * Handle input events
+         */
+        handleInput: function(e) {
+            // Skip if we're ignoring this element
+            if (this.ignoredElements.has(e.target)) {
+                return;
+            }
+            
+            // Skip non-input elements
+            if (!e.target.tagName || !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                return;
+            }
+            
+            // Handle different input types
+            let value;
+            if (e.target.type === 'checkbox' || e.target.type === 'radio') {
+                value = e.target.checked;
+            } else {
+                value = e.target.value;
+            }
+            
+            this.recordEvent('input', e.target, {
+                value: value,
+                inputType: e.target.type
+            });
+        },
+        
+        /**
+         * Handle change events
+         */
+        handleChange: function(e) {
+            // Skip if we're ignoring this element
+            if (this.ignoredElements.has(e.target)) {
+                return;
+            }
+            
+            // Skip non-input elements
+            if (!e.target.tagName || !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                return;
+            }
+            
+            // Handle different input types
+            let value;
+            if (e.target.type === 'checkbox' || e.target.type === 'radio') {
+                value = e.target.checked;
+            } else if (e.target.tagName === 'SELECT') {
+                value = Array.from(e.target.selectedOptions).map(option => option.value);
+            } else {
+                value = e.target.value;
+            }
+            
+            this.recordEvent('change', e.target, {
+                value: value,
+                inputType: e.target.type
+            });
+        },
+        
+        /**
+         * Handle form submissions
+         */
+        handleSubmit: function(e) {
+            this.recordEvent('submit', e.target);
+        },
+        
+        /**
+         * Handle keydown events
+         */
+        handleKeydown: function(e) {
+            // Skip modifier keys by themselves
+            if (['Alt', 'Control', 'Shift', 'Meta'].includes(e.key)) {
+                return;
+            }
+            
+            // Only record special keys or key combinations
+            if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape' || 
+                e.altKey || e.ctrlKey || e.shiftKey || e.metaKey) {
+                
+                this.recordEvent('keydown', e.target, {
+                    key: e.key,
+                    altKey: e.altKey,
+                    ctrlKey: e.ctrlKey,
+                    shiftKey: e.shiftKey,
+                    metaKey: e.metaKey
+                });
+            }
+        },
+        
+        /**
+         * Handle mousedown events
+         */
+        handleMousedown: function(e) {
+            this.lastMousedownElement = e.target;
+            
+            // Only record right-clicks (context menu will also be recorded)
+            if (e.button !== 0) {
+                this.recordEvent('mousedown', e.target, {
+                    button: e.button,
+                    clientX: e.clientX,
+                    clientY: e.clientY
+                });
+            }
+        },
+        
+        /**
+         * Handle mouseover events
+         */
+        handleMouseover: function(e) {
+            // Only track mouseover for elements we care about
+            if (!e.target.tagName) {
+                return;
+            }
+            
+            // Skip if we just had a mouseover on this element
+            if (this.lastMouseoverElement === e.target) {
+                return;
+            }
+            
+            this.lastMouseoverElement = e.target;
+            
+            // Only record mouseover for certain elements
+            if (['A', 'BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+                this.recordEvent('mouseover', e.target);
+            }
+        },
+        
+        /**
+         * Handle drag start events
+         */
+        handleDragStart: function(e) {
+            this.recordEvent('dragstart', e.target, {
+                clientX: e.clientX,
+                clientY: e.clientY
+            });
+        },
+        
+        /**
+         * Handle drop events
+         */
+        handleDrop: function(e) {
+            this.recordEvent('drop', e.target, {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                dataTransfer: e.dataTransfer ? {
+                    types: Array.from(e.dataTransfer.types),
+                    items: e.dataTransfer.items ? Array.from(e.dataTransfer.items).map(item => ({
+                        kind: item.kind,
+                        type: item.type
+                    })) : []
+                } : null
+            });
+        },
+        
+        /**
+         * Handle focus events
+         */
+        handleFocus: function(e) {
+            // Skip non-input elements
+            if (!e.target.tagName || !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                return;
+            }
+            
+            this.recordEvent('focus', e.target);
+        },
+        
+        /**
+         * Handle blur events
+         */
+        handleBlur: function(e) {
+            // Skip non-input elements
+            if (!e.target.tagName || !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                return;
+            }
+            
+            this.recordEvent('blur', e.target);
+        },
+        
+        /**
+         * Handle context menu events
+         */
+        handleContextMenu: function(e) {
+            this.recordEvent('contextmenu', e.target, {
+                clientX: e.clientX,
+                clientY: e.clientY
+            });
+        },
+        
+        /**
+         * Handle navigation events
+         */
+        handleNavigation: function() {
+            this.recordEvent('navigation', document.documentElement, {
+                url: window.location.href,
+                title: document.title
+            });
+        },
+        
+        /**
+         * Hook into the History API
+         */
+        hookHistoryAPI: function() {
+            const self = this;
+            
+            const originalPushState = history.pushState;
+            history.pushState = function() {
+                const result = originalPushState.apply(this, arguments);
+                self.handleNavigation();
+                return result;
+            };
+            
+            const originalReplaceState = history.replaceState;
+            history.replaceState = function() {
+                const result = originalReplaceState.apply(this, arguments);
+                self.handleNavigation();
+                return result;
+            };
+        },
+        
+        /**
+         * Hook into XMLHttpRequest to monitor network activity
+         */
+        hookXHR: function() {
+            const self = this;
+            const originalOpen = XMLHttpRequest.prototype.open;
+            const originalSend = XMLHttpRequest.prototype.send;
+            
+            XMLHttpRequest.prototype.open = function() {
+                this.__csMethod = arguments[0];
+                this.__csUrl = arguments[1];
+                return originalOpen.apply(this, arguments);
+            };
+            
+            XMLHttpRequest.prototype.send = function() {
+                const xhr = this;
+                
+                // Record the request
+                self.recordEvent('xhr_request', null, {
+                    url: xhr.__csUrl,
+                    method: xhr.__csMethod,
+                    body: arguments[0]
+                });
+                
+                // Record the response
+                xhr.addEventListener('load', function() {
+                    self.recordEvent('xhr_response', null, {
+                        url: xhr.__csUrl,
+                        status: xhr.status,
+                        response: xhr.responseType === 'json' ? JSON.stringify(xhr.response) : xhr.responseText
+                    });
+                });
+                
+                return originalSend.apply(this, arguments);
+            };
+        },
+        
+        /**
+         * Hook into fetch API to monitor network activity
+         */
+        hookFetch: function() {
+            const self = this;
+            const originalFetch = window.fetch;
+            
+            window.fetch = function() {
+                const url = arguments[0];
+                const options = arguments[1] || {};
+                
+                // Record the request
+                self.recordEvent('fetch_request', null, {
+                    url: typeof url === 'string' ? url : url.url,
+                    method: options.method || 'GET',
+                    body: options.body
+                });
+                
+                // Execute the original fetch
+                return originalFetch.apply(this, arguments)
+                    .then(function(response) {
+                        // Clone the response to avoid consuming it
+                        const clonedResponse = response.clone();
+                        
+                        // Record the response
+                        clonedResponse.text().then(function(text) {
+                            self.recordEvent('fetch_response', null, {
+                                url: clonedResponse.url,
+                                status: clonedResponse.status,
+                                response: text
+                            });
+                        });
+                        
+                        return response;
+                    });
+            };
+        },
+        
+        /**
+         * Hook into console to monitor logs
+         */
+        hookConsole: function() {
+            const self = this;
+            const methods = ['log', 'info', 'warn', 'error'];
+            
+            methods.forEach(function(method) {
+                const originalMethod = console[method];
+                
+                console[method] = function() {
+                    const args = Array.from(arguments).map(arg => {
+                        try {
+                            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    });
+                    
+                    self.recordEvent('console', null, {
+                        level: method,
+                        message: args.join(' ')
+                    });
+                    
+                    return originalMethod.apply(this, arguments);
+                };
+            });
+        },
+        
+        /**
+         * Detect network activity for smart wait
+         */
+        detectNetworkActivity: function() {
+            // Implementation left intentionally empty for now - would interact with Fetch/XHR hooks
+        },
+        
+        /**
+         * Detect DOM changes for smart wait
+         */
+        detectDomChanges: function() {
+            // Implementation would use MutationObserver to detect DOM changes
+        },
+        
+        /**
+         * Detect animations for smart wait
+         */
+        detectAnimations: function() {
+            // Implementation would detect CSS animations and transitions
+        }
+    };
+
+    // UI Components for element highlighting and toolbar
+    const ui = {
+        /**
+         * Initialize UI components
+         */
+        init: function() {
+            this.createHighlighter();
+            
+            // Only create the toolbar in the top frame
+            if (config.isTopFrame) {
+                this.createToolbar();
+            }
+        },
+        
+        /**
+         * Create the element highlighter
+         */
+        createHighlighter: function() {
+            const highlighter = document.createElement('div');
+            highlighter.className = 'cs-testforge-highlight';
+            highlighter.style.position = 'absolute';
+            highlighter.style.border = '2px solid #FF5722';
+            highlighter.style.borderRadius = '2px';
+            highlighter.style.backgroundColor = 'rgba(255, 87, 34, 0.1)';
+            highlighter.style.pointerEvents = 'none';
+            highlighter.style.zIndex = '9999';
+            highlighter.style.display = 'none';
+            
+            document.body.appendChild(highlighter);
+            
+            this.highlighter = highlighter;
+            
+            // Add mousemove listener to highlight elements
+            document.addEventListener('mousemove', this.handleMouseMove.bind(this), true);
+        },
+        
+        /**
+         * Handle mouse movement for element highlighting
+         */
+        handleMouseMove: function(e) {
+            if (!this.highlighter) {
+                return;
+            }
+            
+            const element = e.target;
+            
+            // Don't highlight our own UI elements
+            if (element.closest('.cs-testforge-highlight, .cs-testforge-toolbar')) {
+                this.highlighter.style.display = 'none';
+                return;
+            }
+            
+            const rect = element.getBoundingClientRect();
+            
+            this.highlighter.style.top = rect.top + window.scrollY + 'px';
+            this.highlighter.style.left = rect.left + window.scrollX + 'px';
+            this.highlighter.style.width = rect.width + 'px';
+            this.highlighter.style.height = rect.height + 'px';
+            this.highlighter.style.display = 'block';
+            
+            // Set a data attribute with information about the element
+            this.highlighter.setAttribute('data-cs-element-info', JSON.stringify({
+                tagName: element.tagName,
+                id: element.id,
+                className: element.className,
+                xpath: utils.getXPath(element),
+                cssSelector: utils.getCssSelector(element)
+            }));
+        },
+        
+        /**
+         * Create the toolbar
+         */
+        createToolbar: function() {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'cs-testforge-toolbar';
+            toolbar.style.position = 'fixed';
+            toolbar.style.top = '10px';
+            toolbar.style.right = '10px';
+            toolbar.style.backgroundColor = '#333';
+            toolbar.style.color = '#fff';
+            toolbar.style.padding = '10px';
+            toolbar.style.borderRadius = '5px';
+            toolbar.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.2)';
+            toolbar.style.zIndex = '10000';
+            toolbar.style.display = 'flex';
+            toolbar.style.flexDirection = 'column';
+            toolbar.style.gap = '5px';
+            toolbar.style.font = '14px Arial, sans-serif';
+            
+            // Create toolbar items
+            const items = [
+                { text: 'Recording: Active', class: 'cs-recording-status' },
+                { text: 'Pause', action: this.togglePause.bind(this), class: 'cs-pause-button' },
+                { text: 'Add Assertion', action: this.addAssertion.bind(this), class: 'cs-assertion-button' },
+                { text: 'Add Wait', action: this.addWait.bind(this), class: 'cs-wait-button' },
+                { text: 'Add Custom Code', action: this.addCustomCode.bind(this), class: 'cs-code-button' },
+                { text: 'Stop Recording', action: this.stopRecording.bind(this), class: 'cs-stop-button' }
+            ];
+            
+            items.forEach(item => {
+                const button = document.createElement('button');
+                button.textContent = item.text;
+                button.className = item.class;
+                button.style.padding = '5px 10px';
+                button.style.backgroundColor = '#444';
+                button.style.border = 'none';
+                button.style.borderRadius = '3px';
+                button.style.color = '#fff';
+                button.style.cursor = 'pointer';
+                button.style.margin = '2px 0';
+                button.style.fontSize = '14px';
+                
+                if (item.action) {
+                    button.addEventListener('click', item.action);
+                }
+                
+                toolbar.appendChild(button);
+            });
+            
+            document.body.appendChild(toolbar);
+            this.toolbar = toolbar;
+            this.recordingStatus = toolbar.querySelector('.cs-recording-status');
+            this.pauseButton = toolbar.querySelector('.cs-pause-button');
+        },
+        
+        /**
+         * Toggle recording pause state
+         */
+        togglePause: function() {
+            const isPaused = this.pauseButton.textContent === 'Resume';
+            
+            if (isPaused) {
+                this.pauseButton.textContent = 'Pause';
+                this.recordingStatus.textContent = 'Recording: Active';
+                
+                // Re-enable event recording
+                window.__csTestForgeRecordingPaused = false;
+            } else {
+                this.pauseButton.textContent = 'Resume';
+                this.recordingStatus.textContent = 'Recording: Paused';
+                
+                // Disable event recording
+                window.__csTestForgeRecordingPaused = true;
+            }
+            
+            // Notify the server about the state change
+            fetch(`${config.serverUrl}/api/recorder/pause`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    recordingId: config.recordingId,
+                    isPaused: !isPaused
+                })
+            }).catch(error => {
+                console.error('Error toggling pause state:', error);
+            });
+        },
+        
+        /**
+         * Add an assertion
+         */
+        addAssertion: function() {
+            // Show assertion dialog
+            this.showDialog('Add Assertion', `
+                <div>
+                    <p>Select an element and assertion type:</p>
+                    <div>
+                        <label>Assertion Type:</label>
+                        <select id="cs-assertion-type">
+                            <option value="isVisible">Is Visible</option>
+                            <option value="isEnabled">Is Enabled</option>
+                            <option value="hasText">Has Text</option>
+                            <option value="hasValue">Has Value</option>
+                            <option value="hasAttribute">Has Attribute</option>
+                            <option value="hasClass">Has Class</option>
+                        </select>
+                    </div>
+                    <div id="cs-assertion-value-container" style="margin-top: 10px;">
+                        <label>Expected Value:</label>
+                        <input type="text" id="cs-assertion-value" />
+                    </div>
+                </div>
+            `, () => {
+                const element = document.elementFromPoint(
+                    this.highlighter.offsetLeft + this.highlighter.offsetWidth / 2,
+                    this.highlighter.offsetTop + this.highlighter.offsetHeight / 2
+                );
+                
+                const assertionType = document.getElementById('cs-assertion-type').value;
+                const assertionValue = document.getElementById('cs-assertion-value').value;
+                
+                // Record the assertion
+                eventHandler.recordEvent('assertion', element, {
+                    assertionType: assertionType,
+                    assertionValue: assertionValue
+                });
+                
+                this.hideDialog();
+            });
+            
+            // Update value field visibility based on assertion type
+            document.getElementById('cs-assertion-type').addEventListener('change', function() {
+                const valueContainer = document.getElementById('cs-assertion-value-container');
+                const type = this.value;
+                
+                if (type === 'isVisible' || type === 'isEnabled') {
+                    valueContainer.style.display = 'none';
+                } else {
+                    valueContainer.style.display = 'block';
+                }
+            });
+        },
+        
+        /**
+         * Add a wait condition
+         */
+        addWait: function() {
+            // Show wait dialog
+            this.showDialog('Add Wait', `
+                <div>
+                    <p>Select a wait type:</p>
+                    <div>
+                        <label>Wait Type:</label>
+                        <select id="cs-wait-type">
+                            <option value="waitForElement">Wait For Element</option>
+                            <option value="waitForElementToDisappear">Wait For Element To Disappear</option>
+                            <option value="waitForText">Wait For Text</option>
+                            <option value="waitForAttribute">Wait For Attribute</option>
+                            <option value="waitForNavigation">Wait For Navigation</option>
+                            <option value="waitForNetworkIdle">Wait For Network Idle</option>
+                            <option value="waitForTimeout">Wait For Timeout</option>
+                        </select>
+                    </div>
+                    <div id="cs-wait-value-container" style="margin-top: 10px;">
+                        <label>Value:</label>
+                        <input type="text" id="cs-wait-value" />
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <label>Timeout (ms):</label>
+                        <input type="number" id="cs-wait-timeout" value="30000" />
+                    </div>
+                </div>
+            `, () => {
+                const element = document.elementFromPoint(
+                    this.highlighter.offsetLeft + this.highlighter.offsetWidth / 2,
+                    this.highlighter.offsetTop + this.highlighter.offsetHeight / 2
+                );
+                
+                const waitType = document.getElementById('cs-wait-type').value;
+                const waitValue = document.getElementById('cs-wait-value').value;
+                const waitTimeout = document.getElementById('cs-wait-timeout').value;
+                
+                // Record the wait
+                eventHandler.recordEvent('wait', element, {
+                    waitType: waitType,
+                    waitValue: waitValue,
+                    waitTimeout: waitTimeout
+                });
+                
+                this.hideDialog();
+            });
+            
+            // Update value field visibility based on wait type
+            document.getElementById('cs-wait-type').addEventListener('change', function() {
+                const valueContainer = document.getElementById('cs-wait-value-container');
+                const type = this.value;
+                
+                if (type === 'waitForNetworkIdle' || type === 'waitForTimeout') {
+                    valueContainer.style.display = 'none';
+                } else {
+                    valueContainer.style.display = 'block';
+                }
+            });
+        },
+        
+        /**
+         * Add custom code
+         */
+        addCustomCode: function() {
+            // Show custom code dialog
+            this.showDialog('Add Custom Code', `
+                <div>
+                    <p>Enter custom code to insert:</p>
+                    <div>
+                        <textarea id="cs-custom-code" style="width: 100%; height: 150px; font-family: monospace;"></textarea>
+                    </div>
+                </div>
+            `, () => {
+                const customCode = document.getElementById('cs-custom-code').value;
+                
+                // Record the custom code
+                eventHandler.recordEvent('custom_code', null, {
+                    code: customCode
+                });
+                
+                this.hideDialog();
+            });
+        },
+        
+        /**
+         * Stop recording
+         */
+        stopRecording: function() {
+            // Confirm with the user
+            if (confirm('Are you sure you want to stop the recording?')) {
+                // Send the stop signal to the server
+                fetch(`${config.serverUrl}/api/recorder/stop`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        recordingId: config.recordingId
+                    })
+                }).catch(error => {
+                    console.error('Error stopping recording:', error);
+                });
+                
+                // Remove UI elements
+                if (this.highlighter) {
+                    this.highlighter.remove();
+                }
+                
+                if (this.toolbar) {
+                    this.toolbar.remove();
+                }
+                
+                if (this.dialog) {
+                    this.dialog.remove();
+                }
+                
+                // Clean up other resources
+                window.__csTestForgeRecorderInjected = false;
+            }
+        },
+        
+        /**
+         * Show a dialog
+         */
+        showDialog: function(title, content, confirmCallback) {
+            // Remove existing dialog if any
+            if (this.dialog) {
+                this.dialog.remove();
+            }
+            
+            const dialog = document.createElement('div');
+            dialog.className = 'cs-testforge-dialog';
+            dialog.style.position = 'fixed';
+            dialog.style.top = '50%';
+            dialog.style.left = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.backgroundColor = '#fff';
+            dialog.style.color = '#333';
+            dialog.style.padding = '20px';
+            dialog.style.borderRadius = '5px';
+            dialog.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.3)';
+            dialog.style.zIndex = '10001';
+            dialog.style.minWidth = '400px';
+            dialog.style.maxWidth = '600px';
+            dialog.style.font = '14px Arial, sans-serif';
+            
+            // Create dialog content
+            dialog.innerHTML = `
+                <div style="margin-bottom: 15px; font-weight: bold; font-size: 16px;">${title}</div>
+                <div>${content}</div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button class="cs-dialog-cancel">Cancel</button>
+                    <button class="cs-dialog-confirm" style="margin-left: 10px;">Confirm</button>
+                </div>
+            `;
+            
+            // Add event listeners
+            dialog.querySelector('.cs-dialog-cancel').addEventListener('click', () => {
+                this.hideDialog();
+            });
+            
+            dialog.querySelector('.cs-dialog-confirm').addEventListener('click', () => {
+                if (confirmCallback) {
+                    confirmCallback();
+                }
+            });
+            
+            // Add a backdrop
+            const backdrop = document.createElement('div');
+            backdrop.className = 'cs-testforge-backdrop';
+            backdrop.style.position = 'fixed';
+            backdrop.style.top = '0';
+            backdrop.style.left = '0';
+            backdrop.style.width = '100%';
+            backdrop.style.height = '100%';
+            backdrop.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            backdrop.style.zIndex = '10000';
+            
+            document.body.appendChild(backdrop);
+            document.body.appendChild(dialog);
+            
+            this.dialog = dialog;
+            this.backdrop = backdrop;
+            
+            // Pause event recording while the dialog is open
+            window.__csTestForgeRecordingPaused = true;
+        },
+        
+        /**
+         * Hide the dialog
+         */
+        hideDialog: function() {
+            if (this.dialog) {
+                this.dialog.remove();
+                this.dialog = null;
+            }
+            
+            if (this.backdrop) {
+                this.backdrop.remove();
+                this.backdrop = null;
+            }
+            
+            // Resume event recording
+            window.__csTestForgeRecordingPaused = false;
+        }
+    };
+
+    // Communication with server
+    const server = {
+        /**
+         * Initialize connection with the server
+         */
+        init: function() {
+            // Set up polling for configuration updates
+            setInterval(this.pollConfig.bind(this), 5000);
+            
+            // Notify server that the recorder is ready
+            this.notifyReady();
+        },
+        
+        /**
+         * Notify the server that the recorder is ready
+         */
+        notifyReady: function() {
+            fetch(`${config.serverUrl}/api/recorder/ready`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    recordingId: config.recordingId,
+                    frameId: config.frameId,
+                    url: window.location.href,
+                    userAgent: navigator.userAgent,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    },
+                    title: document.title,
+                    isTopFrame: config.isTopFrame
+                })
+            }).catch(error => {
+                console.error('Error notifying server:', error);
+            });
+        },
+        
+        /**
+         * Poll for configuration updates
+         */
+        pollConfig: function() {
+            fetch(`${config.serverUrl}/api/recorder/config?recordingId=${config.recordingId}&frameId=${config.frameId}`)
+                .then(response => response.json())
+                .then(newConfig => {
+                    // Update the configuration
+                    Object.assign(config, newConfig);
+                    
+                    // Update UI state if needed
+                    if (ui.recordingStatus && ui.pauseButton) {
+                        if (newConfig.isPaused) {
+                            ui.recordingStatus.textContent = 'Recording: Paused';
+                            ui.pauseButton.textContent = 'Resume';
+                        } else {
+                            ui.recordingStatus.textContent = 'Recording: Active';
+                            ui.pauseButton.textContent = 'Pause';
+                        }
+                        
+                        window.__csTestForgeRecordingPaused = newConfig.isPaused;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error polling configuration:', error);
+                });
+        }
+    };
+
+    // Initialize components
+    function initialize() {
+        // Initialize event handler
+        eventHandler.init();
+        
+        // Initialize UI components
+        ui.init();
+        
+        // Initialize server communication
+        server.init();
+        
+        // Mark initialization complete
+        window.__csTestForgeRecorderInitialized = true;
+        
+        console.log('CSTestForge Recorder initialized');
+    }
+    
+    // Start initialization when the DOM is loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+        initialize();
+    }
+    
+    // Initialize iframe recording
+    function setupIframeRecording() {
+        // Find all iframes and inject the recorder
+        const iframes = document.querySelectorAll('iframe');
+        
+        iframes.forEach(iframe => {
+            try {
+                // Skip if the iframe is from a different origin (cross-origin security)
+                if (!iframe.contentDocument) {
+                    return;
+                }
+                
+                // Generate a unique frame ID
+                const frameId = 'frame_' + utils.generateId();
+                
+                // Create the script element
+                const script = iframe.contentDocument.createElement('script');
+                
+                // Set the script content - injecting the current script
+                script.textContent = `
+                    window.__csTestForgeConfig = {
+                        serverUrl: '${config.serverUrl}',
+                        recordingId: '${config.recordingId}',
+                        frameId: '${frameId}',
+                        isTopFrame: false,
+                        captureScreenshots: ${config.captureScreenshots},
+                        captureNetwork: ${config.captureNetwork},
+                        captureConsole: ${config.captureConsole},
+                        smartWaitEnabled: ${config.smartWaitEnabled},
+                        aiLocatorsEnabled: ${config.aiLocatorsEnabled},
+                        excludedElements: ${JSON.stringify(config.excludedElements)}
+                    };
+                    
+                    // Inject the recorder script
+                    const script = document.createElement('script');
+                    script.src = '${config.serverUrl}/api/recorder/inject?recordingId=${config.recordingId}&frameId=${frameId}';
+                    document.head.appendChild(script);
+                `;
+                
+                // Append the script to the iframe
+                iframe.contentDocument.head.appendChild(script);
+            } catch (e) {
+                console.error('Error injecting recorder into iframe:', e);
+            }
+        });
+        
+        // Set up a MutationObserver to detect new iframes
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.tagName === 'IFRAME') {
+                        // Wait for the iframe to load
+                        node.addEventListener('load', () => {
+                            try {
+                                // Skip if the iframe is from a different origin
+                                if (!node.contentDocument) {
+                                    return;
+                                }
+                                
+                                // Generate a unique frame ID
+                                const frameId = 'frame_' + utils.generateId();
+                                
+                                // Create the script element
+                                const script = node.contentDocument.createElement('script');
+                                
+                                // Set the script content
+                                script.textContent = `
+                                    window.__csTestForgeConfig = {
+                                        serverUrl: '${config.serverUrl}',
+                                        recordingId: '${config.recordingId}',
+                                        frameId: '${frameId}',
+                                        isTopFrame: false,
+                                        captureScreenshots: ${config.captureScreenshots},
+                                        captureNetwork: ${config.captureNetwork},
+                                        captureConsole: ${config.captureConsole},
+                                        smartWaitEnabled: ${config.smartWaitEnabled},
+                                        aiLocatorsEnabled: ${config.aiLocatorsEnabled},
+                                        excludedElements: ${JSON.stringify(config.excludedElements)}
+                                    };
+                                    
+                                    // Inject the recorder script
+                                    const script = document.createElement('script');
+                                    script.src = '${config.serverUrl}/api/recorder/inject?recordingId=${config.recordingId}&frameId=${frameId}';
+                                    document.head.appendChild(script);
+                                `;
+                                
+                                // Append the script to the iframe
+                                node.contentDocument.head.appendChild(script);
+                            } catch (e) {
+                                console.error('Error injecting recorder into new iframe:', e);
+                            }
+                        });
+                    }
+                });
+            });
+        });
+        
+        // Start observing the document
+        observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
+    }
+    
+    // Set up iframe recording after initialization
+    if (config.isTopFrame) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupIframeRecording);
+        } else {
+            setupIframeRecording();
+        }
+    }
+    
+    // AI Component for enhanced element recognition
+    const ai = {
+        /**
+         * Initialize the AI component
+         */
+        init: function() {
+            // This would typically initialize any needed models or resources
+            console.log('AI Component initialized');
+        },
+        
+        /**
+         * Analyze an element to determine the most reliable locator strategy
+         */
+        analyzeElement: function(element) {
+            // Skip if AI locators are not enabled
+            if (!config.aiLocatorsEnabled) {
+                return utils.generateSmartLocators(element);
+            }
+            
+            try {
+                // Get all possible locators for the element
+                const basicLocators = utils.generateSmartLocators(element);
+                
+                // Enhance with AI-based analysis
+                return this.enhanceLocators(element, basicLocators);
+            } catch (e) {
+                console.error('Error in AI element analysis:', e);
+                return utils.generateSmartLocators(element);
+            }
+        },
+        
+        /**
+         * Enhance locators with AI-based analysis
+         */
+        enhanceLocators: function(element, basicLocators) {
+            // Create enhanced locators using more sophisticated techniques
+            const enhancedLocators = [...basicLocators];
+            
+            try {
+                // For text-based locators, use NLP techniques to identify key patterns
+                if (element.textContent) {
+                    const text = element.textContent.trim();
+                    
+                    if (text.length > 0 && text.length < 100) {
+                        // Identify if the text contains any common patterns like IDs, dates, emails, etc.
+                        const patterns = this.identifyPatterns(text);
+                        
+                        if (patterns.size > 0) {
+                            // Create pattern-based locators
+                            patterns.forEach(pattern => {
+                                enhancedLocators.push({
+                                    type: 'patternMatch',
+                                    value: pattern,
+                                    priority: 88,
+                                    robustness: 'high'
+                                });
+                            });
+                        }
+                    }
+                }
+                
+                // Analyze element context - surrounding elements can provide more robust locators
+                const contextLocators = this.analyzeElementContext(element);
+                enhancedLocators.push(...contextLocators);
+                
+                // Analyze visual characteristics - size, position, visibility
+                const visualLocators = this.analyzeVisualCharacteristics(element);
+                enhancedLocators.push(...visualLocators);
+            } catch (e) {
+                console.error('Error enhancing locators:', e);
+            }
+            
+            // Sort by priority
+            return enhancedLocators.sort((a, b) => b.priority - a.priority);
+        },
+        
+        /**
+         * Identify patterns in text
+         */
+        identifyPatterns: function(text) {
+            const patterns = new Set();
+            
+            // Email pattern
+            const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+            if (emailPattern.test(text)) {
+                patterns.add('email');
+            }
+            
+            // Date pattern - simplistic check for common formats
+            const datePattern = /\b(\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b/;
+            if (datePattern.test(text)) {
+                patterns.add('date');
+            }
+            
+            // Phone number pattern - simplistic
+            const phonePattern = /\b(\+\d{1,3}[ -]?)?\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}\b/;
+            if (phonePattern.test(text)) {
+                patterns.add('phone');
+            }
+            
+            // Currency pattern
+            const currencyPattern = /\b(\$|€|£|¥)\s?\d+(\.\d{2})?\b/;
+            if (currencyPattern.test(text)) {
+                patterns.add('currency');
+            }
+            
+            // ID pattern - sequences that look like IDs (alphanumeric with separators)
+            const idPattern = /\b([A-Za-z0-9][-_]?){5,}\b/;
+            if (idPattern.test(text)) {
+                patterns.add('id');
+            }
+            
+            return patterns;
+        },
+        
+        /**
+         * Analyze element context
+         */
+        analyzeElementContext: function(element) {
+            const contextLocators = [];
+            
+            try {
+                // Check for parent elements with distinctive attributes
+                let parent = element.parentElement;
+                let level = 1;
+                
+                while (parent && level <= 3) { // Look up to 3 levels up
+                    if (parent.id) {
+                        contextLocators.push({
+                            type: 'cssSelector',
+                            value: `#${parent.id} ${element.tagName.toLowerCase()}`,
+                            priority: 85 - level * 5,
+                            robustness: 'medium'
+                        });
+                    }
+                    
+                    if (parent.className && parent.className.length > 0) {
+                        const classes = Array.from(parent.classList)
+                            .filter(c => !c.includes('ng-') && !c.includes('ui-'));
+                        
+                        if (classes.length > 0) {
+                            const classSelector = `.${classes.join('.')}`;
+                            contextLocators.push({
+                                type: 'cssSelector',
+                                value: `${classSelector} ${element.tagName.toLowerCase()}`,
+                                priority: 80 - level * 5,
+                                robustness: 'medium'
+                            });
+                        }
+                    }
+                    
+                    parent = parent.parentElement;
+                    level++;
+                }
+                
+                // Check for distinctive siblings
+                const siblings = Array.from(element.parentElement.children);
+                
+                if (siblings.length > 1) {
+                    // Look for siblings with distinctive text
+                    for (let i = 0; i < siblings.length; i++) {
+                        const sibling = siblings[i];
+                        
+                        if (sibling === element) {
+                            continue;
+                        }
+                        
+                        if (sibling.textContent && sibling.textContent.trim().length > 0 &&
+                            sibling.textContent.trim().length < 30) {
+                            
+                            const siblingText = sibling.textContent.trim();
+                            const siblingTagName = sibling.tagName.toLowerCase();
+                            
+                            // Create XPath with text-based sibling reference
+                            contextLocators.push({
+                                type: 'xpath',
+                                value: `//${siblingTagName}[text()="${siblingText}"]/following-sibling::${element.tagName.toLowerCase()}`,
+                                priority: 70,
+                                robustness: 'medium'
+                            });
+                            
+                            contextLocators.push({
+                                type: 'xpath',
+                                value: `//${siblingTagName}[text()="${siblingText}"]/preceding-sibling::${element.tagName.toLowerCase()}`,
+                                priority: 70,
+                                robustness: 'medium'
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error analyzing element context:', e);
+            }
+            
+            return contextLocators;
+        },
+        
+        /**
+         * Analyze visual characteristics
+         */
+        analyzeVisualCharacteristics: function(element) {
+            const visualLocators = [];
+            
+            try {
+                const rect = element.getBoundingClientRect();
+                
+                // Check if the element has a distinctive size or position
+                if (rect.width === rect.height && rect.width > 10) {
+                    // Square elements might be icons or buttons
+                    visualLocators.push({
+                        type: 'visual',
+                        value: `square element with size ${rect.width}px`,
+                        priority: 60,
+                        robustness: 'low'
+                    });
+                }
+                
+                // Very small elements might be icons or indicators
+                if (rect.width < 20 && rect.height < 20 && rect.width > 0 && rect.height > 0) {
+                    visualLocators.push({
+                        type: 'visual',
+                        value: `small element with dimensions ${rect.width}x${rect.height}px`,
+                        priority: 55,
+                        robustness: 'low'
+                    });
+                }
+                
+                // Check for buttons without text but with distinctive styles
+                if (element.tagName === 'BUTTON' || element.tagName === 'A' || 
+                    element.getAttribute('role') === 'button') {
+                    
+                    if (!element.textContent || element.textContent.trim().length === 0) {
+                        visualLocators.push({
+                            type: 'visual',
+                            value: `button without text at position (${Math.round(rect.x)}, ${Math.round(rect.y)})`,
+                            priority: 65,
+                            robustness: 'low'
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Error analyzing visual characteristics:', e);
+            }
+            
+            return visualLocators;
+        },
+        
+        /**
+         * Get suggested wait strategies based on element analysis
+         */
+        getSuggestedWaits: function(element) {
+            const waitStrategies = [];
+            
+            try {
+                // Check if the element is visible
+                if (utils.isElementVisible(element)) {
+                    waitStrategies.push({
+                        type: 'visibility',
+                        priority: 100
+                    });
+                }
+                
+                // Check if the element has dynamic content
+                if (element.textContent && element.textContent.trim().length > 0) {
+                    waitStrategies.push({
+                        type: 'textPresence',
+                        value: element.textContent.trim(),
+                        priority: 90
+                    });
+                }
+                
+                // Check for input fields
+                if (element.tagName === 'INPUT' || element.tagName === 'SELECT' || 
+                    element.tagName === 'TEXTAREA') {
+                    
+                    waitStrategies.push({
+                        type: 'elementToBeEnabled',
+                        priority: 95
+                    });
+                }
+                
+                // Check for images
+                if (element.tagName === 'IMG') {
+                    waitStrategies.push({
+                        type: 'imageToLoad',
+                        priority: 85
+                    });
+                }
+            } catch (e) {
+                console.error('Error getting suggested waits:', e);
+            }
+            
+            // Sort by priority
+            return waitStrategies.sort((a, b) => b.priority - a.priority);
+        }
+    };
+
+    // Initialize the AI component
+    ai.init();
+    
+    // Export API for the recorder
+    window.__csTestForgeAPI = {
+        utils: utils,
+        eventHandler: eventHandler,
+        ui: ui,
+        server: server,
+        ai: ai,
+        config: config
+    };
+})();
+
