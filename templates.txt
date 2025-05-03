@@ -1147,7 +1147,6 @@ public class ${className} extends CSBaseTest {
 templates/codegen/typescript/playwright/testng.vm
 ------------------------------------------------------
 
-
 import { test, expect, Page, Browser, BrowserContext, Locator } from '@playwright/test';
 import { CSReporter } from '../../framework/CSReporter';
 import { CSBasePage } from '../../framework/CSBasePage';
