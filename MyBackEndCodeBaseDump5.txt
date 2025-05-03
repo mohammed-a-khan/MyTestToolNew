@@ -1,0 +1,5623 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useRecording } from '../../hooks/useRecording';
+import { RecorderContext } from '../../contexts/RecorderContext';
+import BrowserFrame from './BrowserFrame';
+import ElementHighlighter from './ElementHighlighter';
+import ActionToolbar from './ActionToolbar';
+import RecorderControls from './RecorderControls';
+import RecorderSettings from './RecorderSettings';
+import StepsList from './StepsList';
+import { RecordingSession, RecordingEvent, RecordingStep } from '../../types/recorder';
+import { Api } from '../../services/api';
+import { toast } from 'react-toastify';
+import './RecorderComponent.css';
+
+interface RecorderComponentProps {
+  initialUrl?: string;
+  onTestGenerated?: (testId: string) => void;
+}
+
+const RecorderComponent: React.FC<RecorderComponentProps> = ({ initialUrl = '', onTestGenerated }) => {
+  // State for recorder
+  const [url, setUrl] = useState<string>(initialUrl);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [recordingSession, setRecordingSession] = useState<RecordingSession | null>(null);
+  const [recordingSteps, setRecordingSteps] = useState<RecordingStep[]>([]);
+  const [currentHighlight, setCurrentHighlight] = useState<any>(null);
+  const [settings, setSettings] = useState({
+    browser: 'chrome',
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    tool: 'selenium',
+    language: 'java',
+    testType: 'testng',
+    customOptions: {}
+  });
+  const [showSettings, setShowSettings] = useState<boolean>(!initialUrl);
+  const [isGeneratingTest, setIsGeneratingTest] = useState<boolean>(false);
+  const [statusRefreshInterval, setStatusRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Refs
+  const browserFrameRef = useRef<HTMLIFrameElement>(null);
+  
+  // Use the recording hook
+  const { 
+    startRecording, 
+    stopRecording, 
+    togglePause, 
+    addCustomAction, 
+    getRecordingStatus 
+  } = useRecording();
+  
+  // Initialize the recorder
+  useEffect(() => {
+    // Cleanup function
+    return () => {
+      if (recordingSession) {
+        // Stop recording when component unmounts
+        handleStopRecording();
+      }
+      
+      if (statusRefreshInterval) {
+        clearInterval(statusRefreshInterval);
+      }
+    };
+  }, [recordingSession, statusRefreshInterval]);
+  
+  // Handle starting the recording
+  const handleStartRecording = async () => {
+    if (!url) {
+      toast.error('Please enter a URL to record');
+      return;
+    }
+    
+    try {
+      // Start recording
+      const session = await startRecording({
+        url,
+        browser: settings.browser,
+        viewportWidth: settings.viewportWidth,
+        viewportHeight: settings.viewportHeight,
+        tool: settings.tool,
+        language: settings.language,
+        testType: settings.testType
+      });
+      
+      setRecordingSession(session);
+      setIsRecording(true);
+      setIsPaused(false);
+      setRecordingSteps([]);
+      
+      // Start polling for status updates
+      const interval = setInterval(refreshRecordingStatus, 2000);
+      setStatusRefreshInterval(interval);
+      
+      toast.success('Recording started');
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      toast.error('Failed to start recording. Please try again.');
+    }
+  };
+  
+  // Handle stopping the recording
+  const handleStopRecording = async () => {
+    if (!recordingSession) {
+      return;
+    }
+    
+    try {
+      // Stop status refresh interval
+      if (statusRefreshInterval) {
+        clearInterval(statusRefreshInterval);
+        setStatusRefreshInterval(null);
+      }
+      
+      // Stop recording
+      const result = await stopRecording(recordingSession.id);
+      
+      setIsRecording(false);
+      setIsPaused(false);
+      
+      if (result.generatedTest && onTestGenerated) {
+        onTestGenerated(result.generatedTest.id);
+      }
+      
+      toast.success('Recording completed');
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      toast.error('Failed to stop recording. Please try again.');
+    }
+  };
+  
+  // Handle pausing/resuming the recording
+  const handleTogglePause = async () => {
+    if (!recordingSession) {
+      return;
+    }
+    
+    try {
+      await togglePause(recordingSession.id, !isPaused);
+      setIsPaused(!isPaused);
+      
+      toast.info(isPaused ? 'Recording resumed' : 'Recording paused');
+    } catch (error) {
+      console.error('Failed to toggle pause:', error);
+      toast.error('Failed to toggle pause. Please try again.');
+    }
+  };
+  
+  // Handle refreshing recording status
+  const refreshRecordingStatus = async () => {
+    if (!recordingSession) {
+      return;
+    }
+    
+    try {
+      const status = await getRecordingStatus(recordingSession.id);
+      
+      // Update steps based on events
+      if (status.eventCount > recordingSteps.length) {
+        // Fetch the latest events
+        const response = await Api.get(`/api/recorder/events?recordingId=${recordingSession.id}&offset=${recordingSteps.length}`);
+        
+        if (response.data && response.data.success && response.data.data) {
+          const newEvents: RecordingEvent[] = response.data.data;
+          
+          // Convert events to steps
+          const newSteps = newEvents.map(convertEventToStep);
+          
+          setRecordingSteps(prevSteps => [...prevSteps, ...newSteps]);
+        }
+      }
+      
+      // Update pause state
+      if (status.isPaused !== undefined) {
+        setIsPaused(status.isPaused);
+      }
+      
+      // Update highlights
+      if (status.currentElement) {
+        setCurrentHighlight(status.currentElement);
+      }
+    } catch (error) {
+      console.error('Failed to refresh recording status:', error);
+    }
+  };
+  
+  // Handle changing URL
+  const handleUrlChange = (newUrl: string) => {
+    setUrl(newUrl);
+  };
+  
+  // Handle changing settings
+  const handleSettingsChange = (newSettings: any) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+  };
+  
+  // Handle adding a custom action
+  const handleAddCustomAction = async (actionType: string, actionTarget: string, actionValue: string, additionalParams: any = {}) => {
+    if (!recordingSession) {
+      return;
+    }
+    
+    try {
+      await addCustomAction(recordingSession.id, {
+        actionType,
+        actionTarget,
+        actionValue,
+        additionalParams
+      });
+      
+      // Refresh status to get the new action
+      await refreshRecordingStatus();
+      
+      toast.success(`Added ${actionType} action`);
+    } catch (error) {
+      console.error('Failed to add custom action:', error);
+      toast.error('Failed to add custom action. Please try again.');
+    }
+  };
+  
+  // Handle generating test code
+  const handleGenerateTest = async () => {
+    if (!recordingSession) {
+      return;
+    }
+    
+    try {
+      setIsGeneratingTest(true);
+      
+      const response = await Api.post('/api/recorder/generate', {
+        recordingId: recordingSession.id,
+        testName: 'Recorded Test',
+        packageName: 'com.cstestforge.tests',
+        className: 'RecordedTest',
+        description: 'Test generated from recording session',
+        generatePageObjects: true
+      });
+      
+      if (response.data && response.data.success && response.data.data) {
+        const generatedTest = response.data.data;
+        
+        if (onTestGenerated) {
+          onTestGenerated(generatedTest.id);
+        }
+        
+        toast.success('Test code generated successfully');
+      } else {
+        toast.error('Failed to generate test code');
+      }
+    } catch (error) {
+      console.error('Failed to generate test code:', error);
+      toast.error('Failed to generate test code. Please try again.');
+    } finally {
+      setIsGeneratingTest(false);
+    }
+  };
+  
+  // Handle deleting a step
+  const handleDeleteStep = (index: number) => {
+    setRecordingSteps(prevSteps => prevSteps.filter((_, i) => i !== index));
+  };
+  
+  // Handle editing a step
+  const handleEditStep = (index: number, updatedStep: RecordingStep) => {
+    setRecordingSteps(prevSteps => {
+      const newSteps = [...prevSteps];
+      newSteps[index] = updatedStep;
+      return newSteps;
+    });
+  };
+  
+  // Convert a recording event to a step
+  const convertEventToStep = (event: RecordingEvent): RecordingStep => {
+    return {
+      id: event.id,
+      type: event.type,
+      timestamp: event.timestamp,
+      description: getEventDescription(event),
+      elementInfo: event.target,
+      additionalData: event.additionalData || {},
+      locators: event.locators || []
+    };
+  };
+  
+  // Get description for an event
+  const getEventDescription = (event: RecordingEvent): string => {
+    const type = event.type;
+    const target = event.target;
+    
+    if (type === 'navigation') {
+      if (event.pageState?.url) {
+        return `Navigate to ${event.pageState.url}`;
+      }
+      return 'Navigate to page';
+    } else if (type === 'click') {
+      if (target) {
+        const elementDesc = getElementDescription(target);
+        return `Click on ${elementDesc}`;
+      }
+      return 'Click event';
+    } else if (type === 'input' || type === 'change') {
+      if (target) {
+        const elementDesc = getElementDescription(target);
+        const value = event.additionalData?.value || '';
+        return `Enter "${value}" into ${elementDesc}`;
+      }
+      return 'Input event';
+    } else if (type === 'select') {
+      if (target) {
+        const elementDesc = getElementDescription(target);
+        const value = event.additionalData?.value || '';
+        return `Select "${value}" from ${elementDesc}`;
+      }
+      return 'Select event';
+    } else if (type === 'assertion') {
+      // Handle custom assertions
+      const assertionType = event.additionalData?.assertionType;
+      const assertionValue = event.additionalData?.assertionValue;
+      
+      if (assertionType) {
+        if (assertionType === 'isVisible') {
+          if (target) {
+            return `Assert that ${getElementDescription(target)} is visible`;
+          }
+        } else if (assertionType === 'hasText') {
+          if (target) {
+            return `Assert that ${getElementDescription(target)} has text "${assertionValue}"`;
+          }
+        } else if (assertionType === 'hasValue') {
+          if (target) {
+            return `Assert that ${getElementDescription(target)} has value "${assertionValue}"`;
+          }
+        }
+      }
+      
+      return 'Assertion';
+    } else if (type === 'wait') {
+      // Handle custom waits
+      const waitType = event.additionalData?.waitType;
+      const waitValue = event.additionalData?.waitValue;
+      const waitTimeout = event.additionalData?.waitTimeout;
+      
+      if (waitType) {
+        if (waitType === 'waitForElement') {
+          if (target) {
+            return `Wait for ${getElementDescription(target)} to be visible`;
+          }
+        } else if (waitType === 'waitForText') {
+          return `Wait for text "${waitValue}"`;
+        } else if (waitType === 'waitForNavigation') {
+          return 'Wait for navigation to complete';
+        } else if (waitType === 'waitForTimeout') {
+          if (waitTimeout) {
+            return `Wait for ${waitTimeout} milliseconds`;
+          }
+          return 'Wait for timeout';
+        }
+      }
+      
+      return 'Wait';
+    } else if (type === 'custom_code') {
+      // Handle custom code
+      const code = event.additionalData?.code;
+      if (code) {
+        return `Execute custom code: ${code.length > 30 ? code.substring(0, 30) + '...' : code}`;
+      }
+      return 'Execute custom code';
+    } else if (type === 'contextmenu') {
+      if (target) {
+        return `Right-click on ${getElementDescription(target)}`;
+      }
+      return 'Context menu event';
+    } else if (type === 'dragstart' || type === 'drop') {
+      if (target) {
+        return (type === 'dragstart' ? 'Start drag from ' : 'Drop onto ') + 
+               getElementDescription(target);
+      }
+      return type === 'dragstart' ? 'Drag start event' : 'Drop event';
+    } else if (type === 'keydown') {
+      const key = event.additionalData?.key;
+      if (key) {
+        if (target) {
+          return `Press ${key} key in ${getElementDescription(target)}`;
+        }
+        return `Press ${key} key`;
+      }
+      return 'Key press event';
+    }
+    
+    // Default case
+    return `Event: ${type}`;
+  };
+  
+  // Get description for an element
+  const getElementDescription = (element: any): string => {
+    if (!element) {
+      return 'element';
+    }
+    
+    const tagName = element.tagName;
+    if (!tagName) {
+      return 'element';
+    }
+    
+    const id = element.id;
+    const name = element.name;
+    const type = element.type;
+    const text = element.text;
+    
+    // Handle common element types
+    if (tagName.toUpperCase() === 'A') {
+      if (text) {
+        if (text.length > 20) {
+          return `link "${text.substring(0, 17)}..."`;
+        }
+        return `link "${text}"`;
+      } else if (id) {
+        return `link with ID "${id}"`;
+      }
+      return 'link';
+    } else if (tagName.toUpperCase() === 'BUTTON') {
+      if (text) {
+        if (text.length > 20) {
+          return `button "${text.substring(0, 17)}..."`;
+        }
+        return `button "${text}"`;
+      } else if (id) {
+        return `button with ID "${id}"`;
+      }
+      return 'button';
+    } else if (tagName.toUpperCase() === 'INPUT') {
+      if (type) {
+        if (type.toLowerCase() === 'text') {
+          if (id) {
+            return `text field with ID "${id}"`;
+          } else if (name) {
+            return `text field with name "${name}"`;
+          }
+          return 'text field';
+        } else if (type.toLowerCase() === 'password') {
+          return 'password field';
+        } else if (type.toLowerCase() === 'checkbox') {
+          return 'checkbox';
+        } else if (type.toLowerCase() === 'radio') {
+          return 'radio button';
+        } else if (type.toLowerCase() === 'submit') {
+          if (element.value) {
+            return `submit button "${element.value}"`;
+          }
+          return 'submit button';
+        }
+      }
+      
+      if (id) {
+        return `input field with ID "${id}"`;
+      } else if (name) {
+        return `input field with name "${name}"`;
+      }
+      return 'input field';
+    } else if (tagName.toUpperCase() === 'SELECT') {
+      if (id) {
+        return `dropdown with ID "${id}"`;
+      } else if (name) {
+        return `dropdown with name "${name}"`;
+      }
+      return 'dropdown';
+    } else if (tagName.toUpperCase() === 'TEXTAREA') {
+      if (id) {
+        return `text area with ID "${id}"`;
+      } else if (name) {
+        return `text area with name "${name}"`;
+      }
+      return 'text area';
+    } else if (tagName.toUpperCase() === 'LABEL') {
+      if (text) {
+        if (text.length > 20) {
+          return `label "${text.substring(0, 17)}..."`;
+        }
+        return `label "${text}"`;
+      }
+      return 'label';
+    } else if (tagName.toUpperCase() === 'DIV' || tagName.toUpperCase() === 'SPAN') {
+      if (text) {
+        if (text.length > 20) {
+          return `${tagName.toLowerCase()} "${text.substring(0, 17)}..."`;
+        }
+        return `${tagName.toLowerCase()} "${text}"`;
+      } else if (id) {
+        return `${tagName.toLowerCase()} with ID "${id}"`;
+      } else if (element.className) {
+        return `${tagName.toLowerCase()} with class "${element.className}"`;
+      }
+      return `${tagName.toLowerCase()} element`;
+    }
+    
+    // Generic case
+    if (text) {
+      if (text.length > 20) {
+        return `${tagName.toLowerCase()} "${text.substring(0, 17)}..."`;
+      }
+      return `${tagName.toLowerCase()} "${text}"`;
+    } else if (id) {
+      return `${tagName.toLowerCase()} with ID "${id}"`;
+    }
+    
+    return `${tagName.toLowerCase()} element`;
+  };
+  
+  return (
+    <RecorderContext.Provider value={{ 
+      recordingSession, 
+      isRecording, 
+      isPaused,
+      recordingSteps,
+      currentHighlight,
+      addCustomAction: handleAddCustomAction,
+      deleteStep: handleDeleteStep,
+      editStep: handleEditStep
+    }}>
+      <div className="cs-recorder-container">
+        <div className="cs-recorder-sidebar">
+          <div className="cs-recorder-controls">
+            <RecorderControls 
+              url={url}
+              isRecording={isRecording}
+              isPaused={isPaused}
+              isGeneratingTest={isGeneratingTest}
+              onUrlChange={handleUrlChange}
+              onStartRecording={handleStartRecording}
+              onStopRecording={handleStopRecording}
+              onTogglePause={handleTogglePause}
+              onGenerateTest={handleGenerateTest}
+              onOpenSettings={() => setShowSettings(true)}
+            />
+          </div>
+          <div className="cs-recorder-steps">
+            <StepsList steps={recordingSteps} />
+          </div>
+          <div className="cs-recorder-toolbar">
+            <ActionToolbar />
+          </div>
+        </div>
+        <div className="cs-recorder-browser">
+          {!isRecording && showSettings ? (
+            <RecorderSettings 
+              settings={settings} 
+              onSettingsChange={handleSettingsChange}
+              onClose={() => setShowSettings(false)}
+              onStartRecording={handleStartRecording}
+            />
+          ) : (
+            <BrowserFrame
+              ref={browserFrameRef}
+              url={recordingSession?.url || url}
+              width={settings.viewportWidth}
+              height={settings.viewportHeight}
+              isRecording={isRecording}
+              recordingId={recordingSession?.id}
+            />
+          )}
+        </div>
+        {isRecording && currentHighlight && (
+          <ElementHighlighter element={currentHighlight} />
+        )}
+      </div>
+    </RecorderContext.Provider>
+  );
+};
+
+export default RecorderComponent;
+
+
+import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { Api } from '../../services/api';
+import './BrowserFrame.css';
+
+interface BrowserFrameProps {
+  url: string;
+  width: number;
+  height: number;
+  isRecording: boolean;
+  recordingId?: string;
+}
+
+export interface BrowserFrameRef {
+  getIframe: () => HTMLIFrameElement | null;
+  reload: () => void;
+}
+
+const BrowserFrame = forwardRef<BrowserFrameRef, BrowserFrameProps>((props, ref) => {
+  const { url, width, height, isRecording, recordingId } = props;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const injectedScriptRef = useRef<boolean>(false);
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    getIframe: () => iframeRef.current,
+    reload: () => {
+      if (iframeRef.current) {
+        iframeRef.current.src = iframeRef.current.src;
+      }
+    }
+  }));
+
+  // Handle iframe load event
+  const handleIframeLoad = () => {
+    if (isRecording && recordingId && !injectedScriptRef.current) {
+      injectRecorderScript();
+    }
+  };
+
+  // Inject recorder script into iframe
+  const injectRecorderScript = async () => {
+    if (!recordingId || !iframeRef.current) {
+      return;
+    }
+
+    try {
+      // Get the iframe document
+      const iframe = iframeRef.current;
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+
+      if (!iframeDoc) {
+        console.error('Cannot access iframe document');
+        return;
+      }
+
+      // Create script element
+      const script = iframeDoc.createElement('script');
+      script.async = true;
+
+      // Set script content or src
+      if (process.env.NODE_ENV === 'development') {
+        // In development, fetch the script content and inject it directly
+        const response = await Api.get(`/api/recorder/inject?recordingId=${recordingId}&timestamp=${Date.now()}`);
+        script.textContent = response.data;
+      } else {
+        // In production, use a script src
+        script.src = `/api/recorder/inject?recordingId=${recordingId}&timestamp=${Date.now()}`;
+      }
+
+      // Append script to iframe
+      iframeDoc.head.appendChild(script);
+      
+      // Mark as injected
+      injectedScriptRef.current = true;
+      
+      console.log('Recorder script injected');
+    } catch (error) {
+      console.error('Failed to inject recorder script:', error);
+    }
+  };
+
+  // When recording state changes
+  useEffect(() => {
+    if (isRecording && recordingId) {
+      // Reset injection flag when recording starts
+      injectedScriptRef.current = false;
+      
+      // Try to inject script if iframe is already loaded
+      if (iframeRef.current) {
+        injectRecorderScript();
+      }
+    }
+  }, [isRecording, recordingId]);
+
+  // Reset injection flag when URL changes
+  useEffect(() => {
+    injectedScriptRef.current = false;
+  }, [url]);
+
+  return (
+    <div className="cs-browser-frame">
+      <div className="cs-browser-header">
+        <div className="cs-browser-controls">
+          <span className="cs-browser-control cs-browser-control-close"></span>
+          <span className="cs-browser-control cs-browser-control-minimize"></span>
+          <span className="cs-browser-control cs-browser-control-maximize"></span>
+        </div>
+        <div className="cs-browser-address-bar">
+          <span className="cs-browser-address">{url}</span>
+        </div>
+        <div className="cs-browser-actions">
+          <button 
+            className="cs-browser-refresh" 
+            onClick={() => {
+              if (iframeRef.current) {
+                iframeRef.current.src = iframeRef.current.src;
+              }
+            }}
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+      <div className="cs-browser-viewport" style={{ width, height }}>
+        {url ? (
+          <iframe
+            ref={iframeRef}
+            src={url}
+            width={width}
+            height={height}
+            onLoad={handleIframeLoad}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+            allow="camera; microphone; geolocation"
+            className="cs-browser-iframe"
+          ></iframe>
+        ) : (
+          <div className="cs-browser-placeholder">
+            <p>Enter a URL to start recording</p>
+          </div>
+        )}
+      </div>
+      {isRecording && (
+        <div className="cs-recording-indicator">
+          <span className="cs-recording-dot"></span>
+          Recording
+        </div>
+      )}
+    </div>
+  );
+});
+
+export default BrowserFrame;
+
+
+
+import React, { useState } from 'react';
+import './RecorderControls.css';
+
+interface RecorderControlsProps {
+  url: string;
+  isRecording: boolean;
+  isPaused: boolean;
+  isGeneratingTest: boolean;
+  onUrlChange: (url: string) => void;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
+  onTogglePause: () => void;
+  onGenerateTest: () => void;
+  onOpenSettings: () => void;
+}
+
+const RecorderControls: React.FC<RecorderControlsProps> = ({
+  url,
+  isRecording,
+  isPaused,
+  isGeneratingTest,
+  onUrlChange,
+  onStartRecording,
+  onStopRecording,
+  onTogglePause,
+  onGenerateTest,
+  onOpenSettings
+}) => {
+  const [localUrl, setLocalUrl] = useState<string>(url);
+
+  // Handle URL input change
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalUrl(e.target.value);
+  };
+
+  // Handle URL form submission
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Add https:// prefix if not present
+    let finalUrl = localUrl.trim();
+    if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      finalUrl = 'https://' + finalUrl;
+      setLocalUrl(finalUrl);
+    }
+    
+    onUrlChange(finalUrl);
+    
+    if (isRecording) {
+      // If already recording, this is a navigation within the recording
+      // This will be handled by the BrowserFrame component
+    } else {
+      // If not recording, start a new recording
+      onStartRecording();
+    }
+  };
+
+  return (
+    <div className="cs-recorder-controls">
+      <div className="cs-url-form">
+        <form onSubmit={handleUrlSubmit}>
+          <div className="cs-url-input-container">
+            <input
+              type="text"
+              className="cs-url-input"
+              value={localUrl}
+              onChange={handleUrlChange}
+              placeholder="Enter URL to record (e.g., https://example.com)"
+              disabled={isRecording && !isPaused}
+            />
+            {!isRecording && (
+              <button
+                type="submit"
+                className="cs-go-button"
+                disabled={!localUrl.trim()}
+              >
+                Go
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="cs-control-buttons">
+        {!isRecording ? (
+          <>
+            <button
+              className="cs-control-button cs-record-button"
+              onClick={onStartRecording}
+              disabled={!url.trim()}
+              title="Start Recording"
+            >
+              <span className="cs-button-icon">⬤</span>
+              Record
+            </button>
+            <button
+              className="cs-control-button cs-settings-button"
+              onClick={onOpenSettings}
+              title="Recorder Settings"
+            >
+              <span className="cs-button-icon">⚙️</span>
+              Settings
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="cs-control-button cs-stop-button"
+              onClick={onStopRecording}
+              title="Stop Recording"
+            >
+              <span className="cs-button-icon">◼</span>
+              Stop
+            </button>
+            <button
+              className="cs-control-button cs-pause-button"
+              onClick={onTogglePause}
+              title={isPaused ? "Resume Recording" : "Pause Recording"}
+            >
+              <span className="cs-button-icon">
+                {isPaused ? "▶" : "⏸"}
+              </span>
+              {isPaused ? "Resume" : "Pause"}
+            </button>
+            <button
+              className="cs-control-button cs-generate-button"
+              onClick={onGenerateTest}
+              disabled={isGeneratingTest}
+              title="Generate Test Code"
+            >
+              <span className="cs-button-icon">📝</span>
+              {isGeneratingTest ? "Generating..." : "Generate Test"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {isRecording && (
+        <div className="cs-recording-status">
+          <div className={`cs-status-indicator ${isPaused ? 'paused' : 'active'}`}></div>
+          <span>Status: {isPaused ? 'Paused' : 'Recording'}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default RecorderControls;
+
+
+
+import React, { useState, useContext } from 'react';
+import { RecorderContext } from '../../contexts/RecorderContext';
+import { RecordingStep } from '../../types/recorder';
+import './StepsList.css';
+
+interface StepsListProps {
+  steps: RecordingStep[];
+}
+
+const StepsList: React.FC<StepsListProps> = ({ steps }) => {
+  const { deleteStep, editStep } = useContext(RecorderContext);
+  const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
+  const [editingStepText, setEditingStepText] = useState<string>('');
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+
+  // Handle editing step
+  const handleStartEditing = (index: number) => {
+    setEditingStepIndex(index);
+    setEditingStepText(steps[index].description);
+  };
+
+  // Handle saving edited step
+  const handleSaveEdit = () => {
+    if (editingStepIndex !== null) {
+      const updatedStep = { ...steps[editingStepIndex], description: editingStepText };
+      editStep(editingStepIndex, updatedStep);
+      setEditingStepIndex(null);
+      setEditingStepText('');
+    }
+  };
+
+  // Handle canceling edit
+  const handleCancelEdit = () => {
+    setEditingStepIndex(null);
+    setEditingStepText('');
+  };
+
+  // Handle deleting step
+  const handleDeleteStep = (index: number) => {
+    if (window.confirm('Are you sure you want to delete this step?')) {
+      deleteStep(index);
+      setSelectedStep(null);
+    }
+  };
+
+  // Handle selecting step
+  const handleSelectStep = (index: number) => {
+    setSelectedStep(selectedStep === index ? null : index);
+  };
+
+  // Handle moving step up
+  const handleMoveUp = (index: number) => {
+    if (index > 0) {
+      const reorderedSteps = [...steps];
+      const temp = reorderedSteps[index];
+      reorderedSteps[index] = reorderedSteps[index - 1];
+      reorderedSteps[index - 1] = temp;
+      
+      // Update steps
+      reorderedSteps.forEach((step, i) => {
+        editStep(i, step);
+      });
+      
+      // Update selected step
+      setSelectedStep(index - 1);
+    }
+  };
+
+  // Handle moving step down
+  const handleMoveDown = (index: number) => {
+    if (index < steps.length - 1) {
+      const reorderedSteps = [...steps];
+      const temp = reorderedSteps[index];
+      reorderedSteps[index] = reorderedSteps[index + 1];
+      reorderedSteps[index + 1] = temp;
+      
+      // Update steps
+      reorderedSteps.forEach((step, i) => {
+        editStep(i, step);
+      });
+      
+      // Update selected step
+      setSelectedStep(index + 1);
+    }
+  };
+
+  // Format timestamp
+  const formatTimestamp = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString();
+  };
+
+  // Get icon for step type
+  const getStepIcon = (type: string): string => {
+    switch (type) {
+      case 'navigation':
+        return '🌐';
+      case 'click':
+        return '👆';
+      case 'input':
+      case 'change':
+        return '✏️';
+      case 'select':
+        return '📋';
+      case 'assertion':
+        return '✅';
+      case 'wait':
+        return '⏱️';
+      case 'custom_code':
+        return '💻';
+      case 'contextmenu':
+        return '📌';
+      case 'dragstart':
+      case 'drop':
+        return '🔀';
+      case 'keydown':
+        return '⌨️';
+      default:
+        return '🔹';
+    }
+  };
+
+  return (
+    <div className="cs-steps-list">
+      <div className="cs-steps-header">
+        <h3>Recorded Steps ({steps.length})</h3>
+      </div>
+      
+      {steps.length === 0 ? (
+        <div className="cs-steps-empty">
+          <p>No steps recorded yet</p>
+          <p>Start interacting with the page to record steps</p>
+        </div>
+      ) : (
+        <ul className="cs-steps">
+          {steps.map((step, index) => (
+            <li 
+              key={step.id} 
+              className={`cs-step ${selectedStep === index ? 'selected' : ''}`}
+              onClick={() => handleSelectStep(index)}
+            >
+              <div className="cs-step-header">
+                <span className="cs-step-icon">{getStepIcon(step.type)}</span>
+                <span className="cs-step-number">{index + 1}</span>
+                <span className="cs-step-time">{formatTimestamp(step.timestamp)}</span>
+                <span className="cs-step-type">{step.type}</span>
+              </div>
+              
+              <div className="cs-step-content">
+                {editingStepIndex === index ? (
+                  <div className="cs-step-edit">
+                    <input
+                      type="text"
+                      value={editingStepText}
+                      onChange={(e) => setEditingStepText(e.target.value)}
+                      className="cs-step-edit-input"
+                      autoFocus
+                    />
+                    <div className="cs-step-edit-actions">
+                      <button onClick={handleSaveEdit} className="cs-step-edit-save">Save</button>
+                      <button onClick={handleCancelEdit} className="cs-step-edit-cancel">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="cs-step-description">{step.description}</div>
+                )}
+              </div>
+              
+              {selectedStep === index && (
+                <div className="cs-step-actions">
+                  <button
+                    onClick={() => handleStartEditing(index)}
+                    className="cs-step-action cs-step-edit-btn"
+                    title="Edit Step"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => handleDeleteStep(index)}
+                    className="cs-step-action cs-step-delete-btn"
+                    title="Delete Step"
+                  >
+                    🗑
+                  </button>
+                  <button
+                    onClick={() => handleMoveUp(index)}
+                    className="cs-step-action cs-step-move-up"
+                    disabled={index === 0}
+                    title="Move Step Up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => handleMoveDown(index)}
+                    className="cs-step-action cs-step-move-down"
+                    disabled={index === steps.length - 1}
+                    title="Move Step Down"
+                  >
+                    ↓
+                  </button>
+                </div>
+              )}
+              
+              {step.elementInfo && selectedStep === index && (
+                <div className="cs-step-details">
+                  <div className="cs-element-info">
+                    <strong>Element:</strong> {step.elementInfo.tagName}
+                    {step.elementInfo.id && <span> #<code>{step.elementInfo.id}</code></span>}
+                    {step.elementInfo.className && <span> .<code>{step.elementInfo.className}</code></span>}
+                  </div>
+                  
+                  {step.locators && step.locators.length > 0 && (
+                    <div className="cs-locators">
+                      <strong>Best Locator:</strong>
+                      <code>{step.locators[0].value}</code>
+                    </div>
+                  )}
+                  
+                  {step.additionalData && Object.keys(step.additionalData).length > 0 && (
+                    <div className="cs-additional-data">
+                      <strong>Data:</strong>
+                      <pre>{JSON.stringify(step.additionalData, null, 2)}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+export default StepsList;
+
+
+import React, { useState, useContext } from 'react';
+import { RecorderContext } from '../../contexts/RecorderContext';
+import './ActionToolbar.css';
+
+interface ModalProps {
+  title: string;
+  onClose: () => void;
+  onSave: () => void;
+  children: React.ReactNode;
+}
+
+const Modal: React.FC<ModalProps> = ({ title, onClose, onSave, children }) => {
+  return (
+    <div className="cs-modal-overlay">
+      <div className="cs-modal">
+        <div className="cs-modal-header">
+          <h3>{title}</h3>
+          <button className="cs-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="cs-modal-content">
+          {children}
+        </div>
+        <div className="cs-modal-footer">
+          <button className="cs-modal-cancel" onClick={onClose}>Cancel</button>
+          <button className="cs-modal-save" onClick={onSave}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ActionToolbar: React.FC = () => {
+  const { isRecording, isPaused, addCustomAction } = useContext(RecorderContext);
+  
+  // Modal state
+  const [modalType, setModalType] = useState<string | null>(null);
+  
+  // Form values for different action types
+  const [assertionType, setAssertionType] = useState<string>('isVisible');
+  const [assertionValue, setAssertionValue] = useState<string>('');
+  const [assertionElement, setAssertionElement] = useState<string>('');
+  
+  const [waitType, setWaitType] = useState<string>('waitForElement');
+  const [waitValue, setWaitValue] = useState<string>('');
+  const [waitTimeout, setWaitTimeout] = useState<string>('10000');
+  const [waitElement, setWaitElement] = useState<string>('');
+  
+  const [codeValue, setCodeValue] = useState<string>('');
+  
+  const [loopType, setLoopType] = useState<string>('for');
+  const [loopCount, setLoopCount] = useState<string>('5');
+  const [loopCondition, setLoopCondition] = useState<string>('');
+  
+  const [conditionalType, setConditionalType] = useState<string>('if');
+  const [conditionalCondition, setConditionalCondition] = useState<string>('');
+  
+  // Show modal
+  const showModal = (type: string) => {
+    setModalType(type);
+  };
+  
+  // Close modal
+  const closeModal = () => {
+    setModalType(null);
+  };
+  
+  // Handle adding an assertion
+  const handleAddAssertion = () => {
+    if (!isRecording) return;
+    
+    addCustomAction('assertion', assertionElement, assertionValue, {
+      assertionType: assertionType
+    });
+    
+    closeModal();
+    resetForms();
+  };
+  
+  // Handle adding a wait
+  const handleAddWait = () => {
+    if (!isRecording) return;
+    
+    addCustomAction('wait', waitElement, waitValue, {
+      waitType: waitType,
+      waitTimeout: parseInt(waitTimeout)
+    });
+    
+    closeModal();
+    resetForms();
+  };
+  
+  // Handle adding custom code
+  const handleAddCode = () => {
+    if (!isRecording) return;
+    
+    addCustomAction('custom_code', '', '', {
+      code: codeValue
+    });
+    
+    closeModal();
+    resetForms();
+  };
+  
+  // Handle adding a loop
+  const handleAddLoop = () => {
+    if (!isRecording) return;
+    
+    addCustomAction('loop', '', '', {
+      loopType: loopType,
+      loopCount: parseInt(loopCount),
+      loopCondition: loopCondition
+    });
+    
+    closeModal();
+    resetForms();
+  };
+  
+  // Handle adding a conditional
+  const handleAddConditional = () => {
+    if (!isRecording) return;
+    
+    addCustomAction('conditional', '', '', {
+      conditionalType: conditionalType,
+      conditionalCondition: conditionalCondition
+    });
+    
+    closeModal();
+    resetForms();
+  };
+  
+  // Reset all form values
+  const resetForms = () => {
+    setAssertionType('isVisible');
+    setAssertionValue('');
+    setAssertionElement('');
+    
+    setWaitType('waitForElement');
+    setWaitValue('');
+    setWaitTimeout('10000');
+    setWaitElement('');
+    
+    setCodeValue('');
+    
+    setLoopType('for');
+    setLoopCount('5');
+    setLoopCondition('');
+    
+    setConditionalType('if');
+    setConditionalCondition('');
+  };
+  
+  return (
+    <div className="cs-action-toolbar">
+      <div className="cs-action-buttons">
+        <button
+          className="cs-action-button"
+          onClick={() => showModal('assertion')}
+          disabled={!isRecording || isPaused}
+          title="Add Assertion"
+        >
+          <span className="cs-action-icon">✅</span>
+          <span className="cs-action-label">Assertion</span>
+        </button>
+        
+        <button
+          className="cs-action-button"
+          onClick={() => showModal('wait')}
+          disabled={!isRecording || isPaused}
+          title="Add Wait"
+        >
+          <span className="cs-action-icon">⏱️</span>
+          <span className="cs-action-label">Wait</span>
+        </button>
+        
+        <button
+          className="cs-action-button"
+          onClick={() => showModal('code')}
+          disabled={!isRecording || isPaused}
+          title="Add Custom Code"
+        >
+          <span className="cs-action-icon">💻</span>
+          <span className="cs-action-label">Code</span>
+        </button>
+        
+        <button
+          className="cs-action-button"
+          onClick={() => showModal('loop')}
+          disabled={!isRecording || isPaused}
+          title="Add Loop"
+        >
+          <span className="cs-action-icon">🔄</span>
+          <span className="cs-action-label">Loop</span>
+        </button>
+        
+        <button
+          className="cs-action-button"
+          onClick={() => showModal('conditional')}
+          disabled={!isRecording || isPaused}
+          title="Add Conditional"
+        >
+          <span className="cs-action-icon">⚙️</span>
+          <span className="cs-action-label">Conditional</span>
+        </button>
+      </div>
+      
+      {/* Assertion Modal */}
+      {modalType === 'assertion' && (
+        <Modal
+          title="Add Assertion"
+          onClose={closeModal}
+          onSave={handleAddAssertion}
+        >
+          <div className="cs-form-group">
+            <label htmlFor="assertion-type">Assertion Type:</label>
+            <select
+              id="assertion-type"
+              value={assertionType}
+              onChange={(e) => setAssertionType(e.target.value)}
+              className="cs-form-control"
+            >
+              <option value="isVisible">Is Visible</option>
+              <option value="isEnabled">Is Enabled</option>
+              <option value="hasText">Has Text</option>
+              <option value="hasValue">Has Value</option>
+              <option value="hasAttribute">Has Attribute</option>
+              <option value="hasClass">Has Class</option>
+              <option value="isChecked">Is Checked</option>
+              <option value="isSelected">Is Selected</option>
+            </select>
+          </div>
+          
+          {(assertionType === 'hasText' || assertionType === 'hasValue' || 
+            assertionType === 'hasAttribute' || assertionType === 'hasClass') && (
+            <div className="cs-form-group">
+              <label htmlFor="assertion-value">Expected Value:</label>
+              <input
+                type="text"
+                id="assertion-value"
+                value={assertionValue}
+                onChange={(e) => setAssertionValue(e.target.value)}
+                className="cs-form-control"
+                placeholder="Value to assert"
+              />
+            </div>
+          )}
+          
+          <div className="cs-form-group">
+            <label htmlFor="assertion-element">Element Selector:</label>
+            <input
+              type="text"
+              id="assertion-element"
+              value={assertionElement}
+              onChange={(e) => setAssertionElement(e.target.value)}
+              className="cs-form-control"
+              placeholder="CSS selector or XPath"
+            />
+            <small className="cs-form-text">
+              Leave empty to use the currently highlighted element
+            </small>
+          </div>
+        </Modal>
+      )}
+      
+      {/* Wait Modal */}
+      {modalType === 'wait' && (
+        <Modal
+          title="Add Wait"
+          onClose={closeModal}
+          onSave={handleAddWait}
+        >
+          <div className="cs-form-group">
+            <label htmlFor="wait-type">Wait Type:</label>
+            <select
+              id="wait-type"
+              value={waitType}
+              onChange={(e) => setWaitType(e.target.value)}
+              className="cs-form-control"
+            >
+              <option value="waitForElement">Wait For Element</option>
+              <option value="waitForElementToDisappear">Wait For Element To Disappear</option>
+              <option value="waitForText">Wait For Text</option>
+              <option value="waitForAttribute">Wait For Attribute</option>
+              <option value="waitForNavigation">Wait For Navigation</option>
+              <option value="waitForNetworkIdle">Wait For Network Idle</option>
+              <option value="waitForTimeout">Wait For Timeout</option>
+            </select>
+          </div>
+          
+          {(waitType === 'waitForText' || waitType === 'waitForAttribute') && (
+            <div className="cs-form-group">
+              <label htmlFor="wait-value">Value:</label>
+              <input
+                type="text"
+                id="wait-value"
+                value={waitValue}
+                onChange={(e) => setWaitValue(e.target.value)}
+                className="cs-form-control"
+                placeholder="Text or attribute value"
+              />
+            </div>
+          )}
+          
+          {(waitType === 'waitForElement' || waitType === 'waitForElementToDisappear' || 
+            waitType === 'waitForAttribute') && (
+            <div className="cs-form-group">
+              <label htmlFor="wait-element">Element Selector:</label>
+              <input
+                type="text"
+                id="wait-element"
+                value={waitElement}
+                onChange={(e) => setWaitElement(e.target.value)}
+                className="cs-form-control"
+                placeholder="CSS selector or XPath"
+              />
+              <small className="cs-form-text">
+                Leave empty to use the currently highlighted element
+              </small>
+            </div>
+          )}
+          
+          <div className="cs-form-group">
+            <label htmlFor="wait-timeout">Timeout (ms):</label>
+            <input
+              type="number"
+              id="wait-timeout"
+              value={waitTimeout}
+              onChange={(e) => setWaitTimeout(e.target.value)}
+              className="cs-form-control"
+              min="0"
+              step="1000"
+            />
+          </div>
+        </Modal>
+      )}
+      
+      {/* Custom Code Modal */}
+      {modalType === 'code' && (
+        <Modal
+          title="Add Custom Code"
+          onClose={closeModal}
+          onSave={handleAddCode}
+        >
+          <div className="cs-form-group">
+            <label htmlFor="custom-code">Custom Code:</label>
+            <textarea
+              id="custom-code"
+              value={codeValue}
+              onChange={(e) => setCodeValue(e.target.value)}
+              className="cs-form-control cs-code-textarea"
+              rows={10}
+              placeholder="Enter your custom code here..."
+            />
+            <small className="cs-form-text">
+              This code will be inserted directly into the generated test
+            </small>
+          </div>
+        </Modal>
+      )}
+      
+      {/* Loop Modal */}
+      {modalType === 'loop' && (
+        <Modal
+          title="Add Loop"
+          onClose={closeModal}
+          onSave={handleAddLoop}
+        >
+          <div className="cs-form-group">
+            <label htmlFor="loop-type">Loop Type:</label>
+            <select
+              id="loop-type"
+              value={loopType}
+              onChange={(e) => setLoopType(e.target.value)}
+              className="cs-form-control"
+            >
+              <option value="for">For Loop</option>
+              <option value="while">While Loop</option>
+              <option value="forEach">For Each</option>
+            </select>
+          </div>
+          
+          {loopType === 'for' && (
+            <div className="cs-form-group">
+              <label htmlFor="loop-count">Iteration Count:</label>
+              <input
+                type="number"
+                id="loop-count"
+                value={loopCount}
+                onChange={(e) => setLoopCount(e.target.value)}
+                className="cs-form-control"
+                min="1"
+              />
+            </div>
+          )}
+          
+          {loopType === 'while' && (
+            <div className="cs-form-group">
+              <label htmlFor="loop-condition">Condition:</label>
+              <input
+                type="text"
+                id="loop-condition"
+                value={loopCondition}
+                onChange={(e) => setLoopCondition(e.target.value)}
+                className="cs-form-control"
+                placeholder="condition expression"
+              />
+            </div>
+          )}
+          
+          {loopType === 'forEach' && (
+            <div className="cs-form-group">
+              <label htmlFor="loop-collection">Collection Selector:</label>
+              <input
+                type="text"
+                id="loop-collection"
+                value={loopCondition}
+                onChange={(e) => setLoopCondition(e.target.value)}
+                className="cs-form-control"
+                placeholder="CSS selector for collection elements"
+              />
+            </div>
+          )}
+        </Modal>
+      )}
+      
+      {/* Conditional Modal */}
+      {modalType === 'conditional' && (
+        <Modal
+          title="Add Conditional"
+          onClose={closeModal}
+          onSave={handleAddConditional}
+        >
+          <div className="cs-form-group">
+            <label htmlFor="conditional-type">Conditional Type:</label>
+            <select
+              id="conditional-type"
+              value={conditionalType}
+              onChange={(e) => setConditionalType(e.target.value)}
+              className="cs-form-control"
+            >
+              <option value="if">If Statement</option>
+              <option value="ifElse">If-Else Statement</option>
+              <option value="switch">Switch Statement</option>
+            </select>
+          </div>
+          
+          <div className="cs-form-group">
+            <label htmlFor="conditional-condition">Condition:</label>
+            <input
+              type="text"
+              id="conditional-condition"
+              value={conditionalCondition}
+              onChange={(e) => setConditionalCondition(e.target.value)}
+              className="cs-form-control"
+              placeholder="condition expression"
+            />
+            <small className="cs-form-text">
+              Example: element.isDisplayed() || element.getText().contains("Hello")
+            </small>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+export default ActionToolbar;
+
+
+import React, { useEffect, useRef, useState } from 'react';
+import './ElementHighlighter.css';
+
+interface ElementHighlighterProps {
+  element: any;
+}
+
+const ElementHighlighter: React.FC<ElementHighlighterProps> = ({ element }) => {
+  const highlighterRef = useRef<HTMLDivElement>(null);
+  const [showDetails, setShowDetails] = useState<boolean>(false);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  }>({
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+  });
+
+  // Update highlighter position based on element bounds
+  useEffect(() => {
+    if (!element || !element.bounds) {
+      return;
+    }
+
+    const bounds = element.bounds;
+    
+    setPosition({
+      top: bounds.top || 0,
+      left: bounds.left || 0,
+      width: bounds.width || 0,
+      height: bounds.height || 0,
+    });
+  }, [element]);
+
+  // Toggle element details
+  const toggleDetails = () => {
+    setShowDetails(!showDetails);
+  };
+
+  // Get best locator from element
+  const getBestLocator = () => {
+    if (!element || !element.locators || element.locators.length === 0) {
+      return null;
+    }
+
+    // Find the locator with the highest priority
+    return element.locators.reduce((best: any, current: any) => {
+      if (!best) return current;
+      return current.priority > best.priority ? current : best;
+    }, null);
+  };
+
+  // Get readable element type
+  const getElementType = () => {
+    if (!element) return 'Unknown';
+
+    if (element.tagName) {
+      const tag = element.tagName.toLowerCase();
+      
+      // Determine element type based on tag and attributes
+      if (tag === 'input') {
+        const type = element.type?.toLowerCase() || '';
+        
+        if (type === 'button' || type === 'submit' || type === 'reset') {
+          return 'Button';
+        } else if (type === 'checkbox') {
+          return 'Checkbox';
+        } else if (type === 'radio') {
+          return 'Radio Button';
+        } else if (type === 'text' || type === 'email' || type === 'password' || type === 'search') {
+          return 'Text Input';
+        } else {
+          return 'Input';
+        }
+      } else if (tag === 'button') {
+        return 'Button';
+      } else if (tag === 'a') {
+        return 'Link';
+      } else if (tag === 'select') {
+        return 'Dropdown';
+      } else if (tag === 'textarea') {
+        return 'Text Area';
+      } else if (tag === 'img') {
+        return 'Image';
+      } else if (tag.match(/^h[1-6]$/)) {
+        return 'Heading';
+      } else if (tag === 'div' || tag === 'span') {
+        return 'Container';
+      } else {
+        return tag.charAt(0).toUpperCase() + tag.slice(1);
+      }
+    }
+
+    return 'Element';
+  };
+
+  if (!element) {
+    return null;
+  }
+
+  // Calculate styles for the highlighter
+  const style = {
+    top: `${position.top}px`,
+    left: `${position.left}px`,
+    width: `${position.width}px`,
+    height: `${position.height}px`,
+  };
+
+  // Determine where to place the details popup
+  const detailsStyle = {
+    top: position.top + position.height + 5,
+    left: position.left,
+  };
+
+  // If too close to the bottom of the viewport, place details above
+  if (position.top + position.height + 200 > window.innerHeight) {
+    detailsStyle.top = position.top - 200 - 5;
+  }
+
+  // If too close to the right edge, align right edge of details with right edge of element
+  if (position.left + 300 > window.innerWidth) {
+    detailsStyle.left = position.left + position.width - 300;
+  }
+
+  const bestLocator = getBestLocator();
+
+  return (
+    <>
+      <div 
+        ref={highlighterRef} 
+        className="cs-element-highlighter" 
+        style={style}
+        onClick={toggleDetails}
+      >
+        <div className="cs-highlighter-info">
+          {element.tagName && <span className="cs-highlighter-tag">{element.tagName}</span>}
+          {element.id && <span className="cs-highlighter-id">#{element.id}</span>}
+        </div>
+      </div>
+
+      {showDetails && (
+        <div 
+          className="cs-element-details" 
+          style={{ top: `${detailsStyle.top}px`, left: `${detailsStyle.left}px` }}
+        >
+          <div className="cs-details-header">
+            <span className="cs-details-type">{getElementType()}</span>
+            <button className="cs-details-close" onClick={toggleDetails}>×</button>
+          </div>
+          
+          <div className="cs-details-content">
+            {element.tagName && (
+              <div className="cs-details-item">
+                <strong>Tag:</strong> {element.tagName}
+              </div>
+            )}
+            
+            {element.id && (
+              <div className="cs-details-item">
+                <strong>ID:</strong> {element.id}
+              </div>
+            )}
+            
+            {element.className && (
+              <div className="cs-details-item">
+                <strong>Class:</strong> {element.className}
+              </div>
+            )}
+            
+            {element.name && (
+              <div className="cs-details-item">
+                <strong>Name:</strong> {element.name}
+              </div>
+            )}
+            
+            {element.text && (
+              <div className="cs-details-item">
+                <strong>Text:</strong> {element.text.length > 50 ? element.text.substring(0, 47) + '...' : element.text}
+              </div>
+            )}
+            
+            {element.value !== undefined && element.value !== null && (
+              <div className="cs-details-item">
+                <strong>Value:</strong> {
+                  typeof element.value === 'string' 
+                    ? (element.value.length > 50 ? element.value.substring(0, 47) + '...' : element.value)
+                    : String(element.value)
+                }
+              </div>
+            )}
+            
+            {bestLocator && (
+              <div className="cs-details-item">
+                <strong>Best Locator:</strong>
+                <div className="cs-locator-value">{bestLocator.value}</div>
+                <div className="cs-locator-type">{bestLocator.type} ({bestLocator.robustness})</div>
+              </div>
+            )}
+            
+            {element.attributes && Object.keys(element.attributes).length > 0 && (
+              <div className="cs-details-item">
+                <strong>Attributes:</strong>
+                <div className="cs-attributes-list">
+                  {Object.entries(element.attributes).map(([key, value]: [string, any], index) => (
+                    <div key={index} className="cs-attribute-item">
+                      <span className="cs-attribute-key">{key}:</span>
+                      <span className="cs-attribute-value">{
+                        typeof value === 'string' 
+                          ? (value.length > 30 ? value.substring(0, 27) + '...' : value)
+                          : String(value)
+                      }</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {element.bounds && (
+              <div className="cs-details-item">
+                <strong>Position:</strong>
+                <div>
+                  X: {element.bounds.left}, Y: {element.bounds.top}
+                </div>
+                <div>
+                  Width: {element.bounds.width}, Height: {element.bounds.height}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="cs-details-actions">
+            <button className="cs-action-click">Click</button>
+            {(element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') && (
+              <button className="cs-action-input">Input</button>
+            )}
+            {element.tagName === 'SELECT' && (
+              <button className="cs-action-select">Select</button>
+            )}
+            <button className="cs-action-wait">Wait</button>
+            <button className="cs-action-assert">Assert</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default ElementHighlighter;
+
+
+import React, { useState } from 'react';
+import './RecorderSettings.css';
+
+interface RecorderSettingsProps {
+  settings: {
+    browser: string;
+    viewportWidth: number;
+    viewportHeight: number;
+    tool: string;
+    language: string;
+    testType: string;
+    customOptions: Record<string, any>;
+  };
+  onSettingsChange: (settings: any) => void;
+  onClose: () => void;
+  onStartRecording: () => void;
+}
+
+const RecorderSettings: React.FC<RecorderSettingsProps> = ({
+  settings,
+  onSettingsChange,
+  onClose,
+  onStartRecording
+}) => {
+  const [activeTab, setActiveTab] = useState<string>('general');
+
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    
+    // Convert number inputs to numbers
+    const newValue = type === 'number' ? Number(value) : value;
+    
+    onSettingsChange({ [name]: newValue });
+  };
+
+  // Handle custom option change
+  const handleCustomOptionChange = (key: string, value: any) => {
+    const updatedOptions = {
+      ...settings.customOptions,
+      [key]: value
+    };
+    
+    onSettingsChange({ customOptions: updatedOptions });
+  };
+
+  // Handle form submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onClose();
+    onStartRecording();
+  };
+
+  // Handle cancellation
+  const handleCancel = () => {
+    onClose();
+  };
+
+  // Get viewport presets
+  const getViewportPresets = () => [
+    { name: 'Mobile', width: 375, height: 667 },
+    { name: 'Tablet', width: 768, height: 1024 },
+    { name: 'Desktop', width: 1280, height: 720 },
+    { name: 'Large Desktop', width: 1920, height: 1080 }
+  ];
+
+  // Apply viewport preset
+  const applyViewportPreset = (width: number, height: number) => {
+    onSettingsChange({
+      viewportWidth: width,
+      viewportHeight: height
+    });
+  };
+
+  return (
+    <div className="cs-recorder-settings">
+      <div className="cs-settings-header">
+        <h2>Recorder Settings</h2>
+        <button className="cs-settings-close" onClick={onClose}>×</button>
+      </div>
+
+      <div className="cs-settings-tabs">
+        <button
+          className={`cs-settings-tab ${activeTab === 'general' ? 'active' : ''}`}
+          onClick={() => setActiveTab('general')}
+        >
+          General
+        </button>
+        <button
+          className={`cs-settings-tab ${activeTab === 'browser' ? 'active' : ''}`}
+          onClick={() => setActiveTab('browser')}
+        >
+          Browser
+        </button>
+        <button
+          className={`cs-settings-tab ${activeTab === 'code' ? 'active' : ''}`}
+          onClick={() => setActiveTab('code')}
+        >
+          Code Generation
+        </button>
+        <button
+          className={`cs-settings-tab ${activeTab === 'advanced' ? 'active' : ''}`}
+          onClick={() => setActiveTab('advanced')}
+        >
+          Advanced
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="cs-settings-content">
+          {/* General Settings */}
+          {activeTab === 'general' && (
+            <div className="cs-settings-section">
+              <div className="cs-settings-section-header">
+                <h3>General Settings</h3>
+              </div>
+              
+              <div className="cs-form-group">
+                <label htmlFor="browser">Browser:</label>
+                <select
+                  id="browser"
+                  name="browser"
+                  value={settings.browser}
+                  onChange={handleInputChange}
+                  className="cs-form-control"
+                >
+                  <option value="chrome">Chrome</option>
+                  <option value="firefox">Firefox</option>
+                  <option value="edge">Edge</option>
+                  <option value="safari">Safari</option>
+                </select>
+              </div>
+              
+              <div className="cs-form-group">
+                <label htmlFor="tool">Test Framework:</label>
+                <select
+                  id="tool"
+                  name="tool"
+                  value={settings.tool}
+                  onChange={handleInputChange}
+                  className="cs-form-control"
+                >
+                  <option value="selenium">Selenium</option>
+                  <option value="playwright">Playwright</option>
+                </select>
+              </div>
+              
+              <div className="cs-form-group">
+                <label htmlFor="language">Programming Language:</label>
+                <select
+                  id="language"
+                  name="language"
+                  value={settings.language}
+                  onChange={handleInputChange}
+                  className="cs-form-control"
+                >
+                  <option value="java">Java</option>
+                  <option value="typescript">TypeScript</option>
+                </select>
+              </div>
+              
+              <div className="cs-form-group">
+                <label htmlFor="testType">Test Type:</label>
+                <select
+                  id="testType"
+                  name="testType"
+                  value={settings.testType}
+                  onChange={handleInputChange}
+                  className="cs-form-control"
+                >
+                  <option value="testng">TestNG</option>
+                  <option value="bdd">BDD (Cucumber)</option>
+                </select>
+              </div>
+            </div>
+          )}
+          
+          {/* Browser Settings */}
+          {activeTab === 'browser' && (
+            <div className="cs-settings-section">
+              <div className="cs-settings-section-header">
+                <h3>Browser Settings</h3>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Viewport Size:</label>
+                <div className="cs-viewport-controls">
+                  <div className="cs-viewport-inputs">
+                    <div className="cs-input-group">
+                      <label htmlFor="viewportWidth">Width:</label>
+                      <input
+                        type="number"
+                        id="viewportWidth"
+                        name="viewportWidth"
+                        value={settings.viewportWidth}
+                        onChange={handleInputChange}
+                        className="cs-form-control"
+                        min="320"
+                        max="3840"
+                      />
+                    </div>
+                    <div className="cs-input-group">
+                      <label htmlFor="viewportHeight">Height:</label>
+                      <input
+                        type="number"
+                        id="viewportHeight"
+                        name="viewportHeight"
+                        value={settings.viewportHeight}
+                        onChange={handleInputChange}
+                        className="cs-form-control"
+                        min="240"
+                        max="2160"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Viewport Presets:</label>
+                <div className="cs-viewport-presets">
+                  {getViewportPresets().map((preset, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className="cs-preset-button"
+                      onClick={() => applyViewportPreset(preset.width, preset.height)}
+                    >
+                      {preset.name} ({preset.width}x{preset.height})
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Browser Options:</label>
+                <div className="cs-checkbox-group">
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="headless"
+                      checked={settings.customOptions.headless || false}
+                      onChange={(e) => handleCustomOptionChange('headless', e.target.checked)}
+                    />
+                    <label htmlFor="headless">Headless Mode</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="incognito"
+                      checked={settings.customOptions.incognito || false}
+                      onChange={(e) => handleCustomOptionChange('incognito', e.target.checked)}
+                    />
+                    <label htmlFor="incognito">Incognito Mode</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="disableImages"
+                      checked={settings.customOptions.disableImages || false}
+                      onChange={(e) => handleCustomOptionChange('disableImages', e.target.checked)}
+                    />
+                    <label htmlFor="disableImages">Disable Images</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Code Generation Settings */}
+          {activeTab === 'code' && (
+            <div className="cs-settings-section">
+              <div className="cs-settings-section-header">
+                <h3>Code Generation Settings</h3>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Test Structure:</label>
+                <div className="cs-checkbox-group">
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="generatePageObjects"
+                      checked={settings.customOptions.generatePageObjects || false}
+                      onChange={(e) => handleCustomOptionChange('generatePageObjects', e.target.checked)}
+                    />
+                    <label htmlFor="generatePageObjects">Generate Page Objects</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="generateReporting"
+                      checked={settings.customOptions.generateReporting || false}
+                      onChange={(e) => handleCustomOptionChange('generateReporting', e.target.checked)}
+                    />
+                    <label htmlFor="generateReporting">Include Reporting</label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Test Data:</label>
+                <div className="cs-checkbox-group">
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="extractTestData"
+                      checked={settings.customOptions.extractTestData || false}
+                      onChange={(e) => handleCustomOptionChange('extractTestData', e.target.checked)}
+                    />
+                    <label htmlFor="extractTestData">Extract Test Data</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="generateDataProvider"
+                      checked={settings.customOptions.generateDataProvider || false}
+                      onChange={(e) => handleCustomOptionChange('generateDataProvider', e.target.checked)}
+                    />
+                    <label htmlFor="generateDataProvider">Generate Data Provider</label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Code Style:</label>
+                <div className="cs-radio-group">
+                  <div className="cs-radio">
+                    <input
+                      type="radio"
+                      id="codeStyleCompact"
+                      name="codeStyle"
+                      value="compact"
+                      checked={(settings.customOptions.codeStyle || 'standard') === 'compact'}
+                      onChange={() => handleCustomOptionChange('codeStyle', 'compact')}
+                    />
+                    <label htmlFor="codeStyleCompact">Compact</label>
+                  </div>
+                  <div className="cs-radio">
+                    <input
+                      type="radio"
+                      id="codeStyleStandard"
+                      name="codeStyle"
+                      value="standard"
+                      checked={(settings.customOptions.codeStyle || 'standard') === 'standard'}
+                      onChange={() => handleCustomOptionChange('codeStyle', 'standard')}
+                    />
+                    <label htmlFor="codeStyleStandard">Standard</label>
+                  </div>
+                  <div className="cs-radio">
+                    <input
+                      type="radio"
+                      id="codeStyleVerbose"
+                      name="codeStyle"
+                      value="verbose"
+                      checked={(settings.customOptions.codeStyle || 'standard') === 'verbose'}
+                      onChange={() => handleCustomOptionChange('codeStyle', 'verbose')}
+                    />
+                    <label htmlFor="codeStyleVerbose">Verbose</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Advanced Settings */}
+          {activeTab === 'advanced' && (
+            <div className="cs-settings-section">
+              <div className="cs-settings-section-header">
+                <h3>Advanced Settings</h3>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Smart Recording:</label>
+                <div className="cs-checkbox-group">
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="smartWait"
+                      checked={settings.customOptions.smartWait !== false}
+                      onChange={(e) => handleCustomOptionChange('smartWait', e.target.checked)}
+                    />
+                    <label htmlFor="smartWait">Smart Wait Strategy</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="aiLocators"
+                      checked={settings.customOptions.aiLocators !== false}
+                      onChange={(e) => handleCustomOptionChange('aiLocators', e.target.checked)}
+                    />
+                    <label htmlFor="aiLocators">AI-Based Locators</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="autoAssertion"
+                      checked={settings.customOptions.autoAssertion || false}
+                      onChange={(e) => handleCustomOptionChange('autoAssertion', e.target.checked)}
+                    />
+                    <label htmlFor="autoAssertion">Auto-Generate Assertions</label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="cs-form-group">
+                <label>Capture Settings:</label>
+                <div className="cs-checkbox-group">
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="captureScreenshots"
+                      checked={settings.customOptions.captureScreenshots !== false}
+                      onChange={(e) => handleCustomOptionChange('captureScreenshots', e.target.checked)}
+                    />
+                    <label htmlFor="captureScreenshots">Capture Screenshots</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="captureNetwork"
+                      checked={settings.customOptions.captureNetwork !== false}
+                      onChange={(e) => handleCustomOptionChange('captureNetwork', e.target.checked)}
+                    />
+                    <label htmlFor="captureNetwork">Capture Network Requests</label>
+                  </div>
+                  <div className="cs-checkbox">
+                    <input
+                      type="checkbox"
+                      id="captureConsole"
+                      checked={settings.customOptions.captureConsole !== false}
+                      onChange={(e) => handleCustomOptionChange('captureConsole', e.target.checked)}
+                    />
+                    <label htmlFor="captureConsole">Capture Console Logs</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="cs-settings-footer">
+          <button type="button" className="cs-button-secondary" onClick={handleCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="cs-button-primary">
+            Save and Start Recording
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default RecorderSettings;
+
+
+import { useState, useCallback } from 'react';
+import { Api } from '../services/api';
+import { RecordingSession, RecordingResult, CustomActionRequest } from '../types/recorder';
+
+interface StartRecordingParams {
+  url: string;
+  browser: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  tool: string;
+  language: string;
+  testType: string;
+}
+
+/**
+ * Hook for managing test recording functionality
+ */
+export const useRecording = () => {
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  /**
+   * Start a new recording session
+   */
+  const startRecording = useCallback(async (params: StartRecordingParams): Promise<RecordingSession> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await Api.post('/api/recorder/start', params);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to start recording');
+      }
+      
+      return response.data.data as RecordingSession;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to start recording';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  /**
+   * Stop an active recording session
+   */
+  const stopRecording = useCallback(async (recordingId: string): Promise<RecordingResult> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await Api.post('/api/recorder/stop', { recordingId });
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to stop recording');
+      }
+      
+      return response.data.data as RecordingResult;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to stop recording';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  /**
+   * Toggle pause/resume for a recording session
+   */
+  const togglePause = useCallback(async (recordingId: string, isPaused: boolean): Promise<boolean> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await Api.post('/api/recorder/pause', { recordingId, isPaused });
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to toggle pause state');
+      }
+      
+      return true;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to toggle pause state';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  /**
+   * Add a custom action to the recording
+   */
+  const addCustomAction = useCallback(async (
+    recordingId: string, 
+    request: CustomActionRequest
+  ): Promise<boolean> => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const payload = {
+        recordingId,
+        actionType: request.actionType,
+        actionTarget: request.actionTarget,
+        actionValue: request.actionValue,
+        additionalParams: request.additionalParams || {}
+      };
+      
+      const response = await Api.post('/api/recorder/action', payload);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to add custom action');
+      }
+      
+      return true;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to add custom action';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  /**
+   * Get recording status
+   */
+  const getRecordingStatus = useCallback(async (recordingId: string): Promise<any> => {
+    try {
+      const response = await Api.get(`/api/recorder/status?recordingId=${recordingId}`);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to get recording status');
+      }
+      
+      return response.data.data;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to get recording status';
+      console.error(errorMessage);
+      return {};
+    }
+  }, []);
+  
+  /**
+   * Get recording events
+   */
+  const getRecordingEvents = useCallback(async (recordingId: string, offset: number = 0): Promise<any[]> => {
+    try {
+      const response = await Api.get(`/api/recorder/events?recordingId=${recordingId}&offset=${offset}`);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to get recording events');
+      }
+      
+      return response.data.data || [];
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to get recording events';
+      console.error(errorMessage);
+      return [];
+    }
+  }, []);
+  
+  /**
+   * Generate test code from a recording
+   */
+  const generateTestCode = useCallback(async (
+    recordingId: string,
+    options: {
+      testName?: string;
+      packageName?: string;
+      className?: string;
+      description?: string;
+      generatePageObjects?: boolean;
+      customizations?: Record<string, any>;
+    } = {}
+  ) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const payload = {
+        recordingId,
+        testName: options.testName || 'Recorded Test',
+        packageName: options.packageName || 'com.cstestforge.tests',
+        className: options.className || 'RecordedTest',
+        description: options.description || 'Test generated from recording session',
+        generatePageObjects: options.generatePageObjects !== false,
+        customizations: options.customizations || {}
+      };
+      
+      const response = await Api.post('/api/recorder/generate', payload);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to generate test code');
+      }
+      
+      return response.data.data;
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to generate test code';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  
+  /**
+   * Get active recording sessions
+   */
+  const getActiveSessions = useCallback(async (): Promise<RecordingSession[]> => {
+    try {
+      const response = await Api.get('/api/recorder/sessions');
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to get active sessions');
+      }
+      
+      return response.data.data || [];
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to get active sessions';
+      console.error(errorMessage);
+      return [];
+    }
+  }, []);
+  
+  return {
+    loading,
+    error,
+    startRecording,
+    stopRecording,
+    togglePause,
+    addCustomAction,
+    getRecordingStatus,
+    getRecordingEvents,
+    generateTestCode,
+    getActiveSessions
+  };
+};
+
+
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+
+// API response interface
+interface ApiResponse<T = any> {
+  success: boolean;
+  message: string;
+  data?: T;
+  errors?: string[];
+  timestamp?: number;
+}
+
+/**
+ * API Service for handling HTTP requests to the backend
+ */
+export class ApiService {
+  private axiosInstance: AxiosInstance;
+  private baseURL: string;
+  
+  constructor() {
+    this.baseURL = process.env.REACT_APP_API_URL || '/api';
+    
+    // Create axios instance with default configuration
+    this.axiosInstance = axios.create({
+      baseURL: this.baseURL,
+      timeout: 30000, // 30 seconds timeout
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+    
+    // Add request interceptor
+    this.axiosInstance.interceptors.request.use(
+      (config) => {
+        // Get the auth token from local storage if available
+        const token = localStorage.getItem('auth_token');
+        
+        // If token exists, add it to the request headers
+        if (token && config.headers) {
+          config.headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
+    
+    // Add response interceptor
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        return response;
+      },
+      (error) => {
+        // Handle authentication errors
+        if (error.response && error.response.status === 401) {
+          // Clear local storage and redirect to login page if needed
+          localStorage.removeItem('auth_token');
+          
+          // If we're not already on the login page, redirect
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+        }
+        
+        return Promise.reject(error);
+      }
+    );
+  }
+  
+  /**
+   * Make a GET request
+   */
+  public get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    return this.axiosInstance.get<ApiResponse<T>>(url, config);
+  }
+  
+  /**
+   * Make a POST request
+   */
+  public post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    return this.axiosInstance.post<ApiResponse<T>>(url, data, config);
+  }
+  
+  /**
+   * Make a PUT request
+   */
+  public put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    return this.axiosInstance.put<ApiResponse<T>>(url, data, config);
+  }
+  
+  /**
+   * Make a DELETE request
+   */
+  public delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    return this.axiosInstance.delete<ApiResponse<T>>(url, config);
+  }
+  
+  /**
+   * Make a PATCH request
+   */
+  public patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    return this.axiosInstance.patch<ApiResponse<T>>(url, data, config);
+  }
+  
+  /**
+   * Upload files
+   */
+  public upload<T = any>(url: string, formData: FormData, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
+    const uploadConfig: AxiosRequestConfig = {
+      ...config,
+      headers: {
+        ...(config?.headers || {}),
+        'Content-Type': 'multipart/form-data'
+      }
+    };
+    
+    return this.axiosInstance.post<ApiResponse<T>>(url, formData, uploadConfig);
+  }
+  
+  /**
+   * Download a file
+   */
+  public download(url: string, filename?: string, config?: AxiosRequestConfig): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.axiosInstance
+        .get(url, {
+          ...config,
+          responseType: 'blob'
+        })
+        .then((response) => {
+          // Create a temporary anchor element to trigger download
+          const downloadUrl = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.setAttribute('download', filename || this.getFilenameFromResponse(response) || 'download');
+          document.body.appendChild(link);
+          link.click();
+          
+          // Clean up
+          window.URL.revokeObjectURL(downloadUrl);
+          document.body.removeChild(link);
+          
+          resolve();
+        })
+        .catch((error) => {
+          reject(error);
+        });
+    });
+  }
+  
+  /**
+   * Extract filename from Content-Disposition header
+   */
+  private getFilenameFromResponse(response: AxiosResponse): string | null {
+    const contentDisposition = response.headers['content-disposition'];
+    
+    if (!contentDisposition) {
+      return null;
+    }
+    
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    return filenameMatch ? filenameMatch[1] : null;
+  }
+  
+  /**
+   * Set authentication token
+   */
+  public setAuthToken(token: string): void {
+    localStorage.setItem('auth_token', token);
+  }
+  
+  /**
+   * Get authentication token
+   */
+  public getAuthToken(): string | null {
+    return localStorage.getItem('auth_token');
+  }
+  
+  /**
+   * Clear authentication token
+   */
+  public clearAuthToken(): void {
+    localStorage.removeItem('auth_token');
+  }
+  
+  /**
+   * Check if user is authenticated
+   */
+  public isAuthenticated(): boolean {
+    return !!this.getAuthToken();
+  }
+}
+
+// Export a singleton instance
+export const Api = new ApiService();
+
+
+import React, { createContext } from 'react';
+import { RecordingSession, RecordingStep, CustomActionRequest } from '../types/recorder';
+
+// Context interface
+interface RecorderContextType {
+  recordingSession: RecordingSession | null;
+  isRecording: boolean;
+  isPaused: boolean;
+  recordingSteps: RecordingStep[];
+  currentHighlight: any;
+  addCustomAction: (actionType: string, actionTarget: string, actionValue: string, additionalParams?: any) => Promise<void>;
+  deleteStep: (index: number) => void;
+  editStep: (index: number, updatedStep: RecordingStep) => void;
+}
+
+// Default context values
+const defaultContext: RecorderContextType = {
+  recordingSession: null,
+  isRecording: false,
+  isPaused: false,
+  recordingSteps: [],
+  currentHighlight: null,
+  addCustomAction: async () => {},
+  deleteStep: () => {},
+  editStep: () => {}
+};
+
+// Create context
+export const RecorderContext = createContext<RecorderContextType>(defaultContext);
+
+// Context provider component
+interface RecorderProviderProps {
+  children: React.ReactNode;
+  value: RecorderContextType;
+}
+
+export const RecorderProvider: React.FC<RecorderProviderProps> = ({ children, value }) => {
+  return (
+    <RecorderContext.Provider value={value}>
+      {children}
+    </RecorderContext.Provider>
+  );
+};
+
+// Custom hook to use the RecorderContext
+export const useRecorderContext = () => {
+  const context = React.useContext(RecorderContext);
+  
+  if (context === undefined) {
+    throw new Error('useRecorderContext must be used within a RecorderProvider');
+  }
+  
+  return context;
+};
+
+
+/**
+ * Type definitions for CSTestForge recorder components
+ */
+
+/**
+ * Recording session
+ */
+export interface RecordingSession {
+  id: string;
+  url: string;
+  browser: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  tool: string;
+  language: string;
+  testType: string;
+  status: string;
+  startTime: number;
+  lastEventTime?: number;
+  frames?: {
+    [frameId: string]: FrameInfo;
+  };
+  lastScreenshotPath?: string;
+  customData?: Record<string, any>;
+}
+
+/**
+ * Frame information
+ */
+export interface FrameInfo {
+  id: string;
+  url?: string;
+  title?: string;
+  isTopFrame: boolean;
+  registeredTime: number;
+}
+
+/**
+ * Recording event
+ */
+export interface RecordingEvent {
+  id: string;
+  type: string;
+  timestamp: number;
+  frameId?: string;
+  target?: ElementInfo;
+  locators?: LocatorInfo[];
+  pageState?: PageState;
+  additionalData?: Record<string, any>;
+  screenshotPath?: string;
+}
+
+/**
+ * Element information
+ */
+export interface ElementInfo {
+  tagName?: string;
+  id?: string;
+  className?: string;
+  name?: string;
+  type?: string;
+  value?: any;
+  text?: string;
+  attributes?: Record<string, string>;
+  xpath?: string;
+  cssSelector?: string;
+  bounds?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+    width?: number;
+    height?: number;
+    x?: number;
+    y?: number;
+  };
+  visible?: boolean;
+}
+
+/**
+ * Locator information
+ */
+export interface LocatorInfo {
+  type: string;
+  value: string;
+  priority: number;
+  robustness: string;
+}
+
+/**
+ * Page state
+ */
+export interface PageState {
+  url: string;
+  title?: string;
+  timestamp?: string;
+}
+
+/**
+ * Recording step
+ */
+export interface RecordingStep {
+  id: string;
+  type: string;
+  timestamp: number;
+  description: string;
+  elementInfo?: ElementInfo;
+  locators?: LocatorInfo[];
+  additionalData?: Record<string, any>;
+}
+
+/**
+ * Recording result
+ */
+export interface RecordingResult {
+  recordingId: string;
+  url: string;
+  browser: string;
+  startTime: number;
+  endTime: number;
+  eventCount: number;
+  screenshotPaths: string[];
+  steps: string[];
+  bddSteps?: string[];
+  generatedTest?: GeneratedTest;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Generated test
+ */
+export interface GeneratedTest {
+  id: string;
+  name: string;
+  description?: string;
+  packageName: string;
+  className: string;
+  code: string;
+  language: string;
+  tool: string;
+  browser: string;
+  testType: string;
+  steps: TestStep[];
+  bddSteps?: string[];
+  pageObjects?: Record<string, string>;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Test step
+ */
+export interface TestStep {
+  id: string;
+  type: string;
+  action: string;
+  expectedResult?: string;
+  element?: string;
+  locators?: Record<string, string>;
+  value?: string;
+  waitTimeMs?: number;
+  additionalParams?: Record<string, any>;
+  screenBefore?: string;
+  screenAfter?: string;
+  codeLines?: string[];
+  isConditional?: boolean;
+  condition?: string;
+  isLoop?: boolean;
+  loopCondition?: string;
+  loopIterations?: number;
+  isCustomCode?: boolean;
+  customCode?: string;
+  originalEventId?: string;
+}
+
+/**
+ * Test execution result
+ */
+export interface TestExecutionResult {
+  testId: string;
+  status: string;
+  startTime: number;
+  endTime: number;
+  completedSteps: number;
+  errorMessage?: string;
+  stackTrace?: string;
+  screenshots: string[];
+  logs: string[];
+  testOutput: string[];
+  videoFile?: string;
+  traceFile?: string;
+  additionalData?: Record<string, any>;
+}
+
+/**
+ * Recording request
+ */
+export interface RecordingRequest {
+  url: string;
+  browser?: string;
+  viewportWidth?: number;
+  viewportHeight?: number;
+  tool?: string;
+  language?: string;
+  testType?: string;
+}
+
+/**
+ * Code generation request
+ */
+export interface CodeGenerationRequest {
+  recordingId: string;
+  testName?: string;
+  packageName?: string;
+  className?: string;
+  description?: string;
+  generatePageObjects?: boolean;
+  customizations?: Record<string, any>;
+}
+
+/**
+ * Execute test request
+ */
+export interface ExecuteTestRequest {
+  generatedTest: GeneratedTest;
+  projectPath?: string;
+  executionOptions?: Record<string, any>;
+}
+
+/**
+ * Custom action request
+ */
+export interface CustomActionRequest {
+  actionType: string;
+  actionTarget?: string;
+  actionValue?: string;
+  additionalParams?: Record<string, any>;
+}
+
+/**
+ * Export request
+ */
+export interface ExportRequest {
+  tests: GeneratedTest[];
+  destinationPath: string;
+  projectName: string;
+  frameworkType?: string;
+  exportAsZip?: boolean;
+}
+
+/**
+ * Export result
+ */
+export interface ExportResult {
+  status: string;
+  startTime: number;
+  endTime: number;
+  exportedPath?: string;
+  errorMessage?: string;
+  stackTrace?: string;
+}
+
+/**
+ * Project structure
+ */
+export interface ProjectStructure {
+  name: string;
+  path: string;
+  frameworkType: string;
+  tests: GeneratedTest[];
+}
+
+
+/* Main Recorder Container */
+.cs-recorder-container {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  background-color: #f5f5f5;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.cs-recorder-sidebar {
+  width: 400px;
+  min-width: 350px;
+  max-width: 450px;
+  height: 100%;
+  background-color: #ffffff;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  resize: horizontal;
+}
+
+/* Browser Area */
+.cs-recorder-browser {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+  background-color: #f5f5f5;
+}
+
+/* Controls Area */
+.cs-recorder-controls {
+  padding: 15px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+/* Steps List Area */
+.cs-recorder-steps {
+  flex: 1;
+  overflow-y: auto;
+  border-bottom: 1px solid #eaeaea;
+}
+
+/* Toolbar Area */
+.cs-recorder-toolbar {
+  padding: 10px;
+  background-color: #fafafa;
+}
+
+/* URL Input */
+.cs-url-form {
+  margin-bottom: 15px;
+}
+
+.cs-url-input-container {
+  display: flex;
+  align-items: center;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #fff;
+}
+
+.cs-url-input {
+  flex: 1;
+  padding: 10px 15px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}
+
+.cs-go-button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.cs-go-button:hover {
+  background-color: #45a049;
+}
+
+.cs-go-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Control Buttons */
+.cs-control-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cs-control-button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cs-button-icon {
+  font-size: 18px;
+  margin-bottom: 5px;
+}
+
+.cs-record-button {
+  background-color: #dc3545;
+  color: white;
+}
+
+.cs-record-button:hover {
+  background-color: #c82333;
+}
+
+.cs-settings-button {
+  background-color: #6c757d;
+  color: white;
+}
+
+.cs-settings-button:hover {
+  background-color: #5a6268;
+}
+
+.cs-stop-button {
+  background-color: #dc3545;
+  color: white;
+}
+
+.cs-stop-button:hover {
+  background-color: #c82333;
+}
+
+.cs-pause-button {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.cs-pause-button:hover {
+  background-color: #e0a800;
+}
+
+.cs-generate-button {
+  background-color: #007bff;
+  color: white;
+}
+
+.cs-generate-button:hover {
+  background-color: #0069d9;
+}
+
+.cs-control-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Recording Status */
+.cs-recording-status {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  padding: 5px;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+}
+
+.cs-status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.cs-status-indicator.active {
+  background-color: #dc3545;
+  animation: pulse 1.5s infinite;
+}
+
+.cs-status-indicator.paused {
+  background-color: #ffc107;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Recording Indicator */
+.cs-recording-indicator {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(220, 53, 69, 0.8);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  z-index: 1000;
+}
+
+.cs-recording-dot {
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border-radius: 50%;
+  margin-right: 5px;
+  animation: pulse 1.5s infinite;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .cs-recorder-container {
+    flex-direction: column;
+  }
+  
+  .cs-recorder-sidebar {
+    width: 100%;
+    max-width: 100%;
+    height: 40vh;
+    resize: vertical;
+  }
+  
+  .cs-recorder-browser {
+    height: 60vh;
+  }
+}
+
+/* Dark Mode */
+.dark-mode .cs-recorder-container {
+  background-color: #1e1e1e;
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-recorder-sidebar {
+  background-color: #252526;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .cs-recorder-toolbar {
+  background-color: #2d2d30;
+}
+
+.dark-mode .cs-url-input-container {
+  border: 1px solid #444;
+  background-color: #333;
+}
+
+.dark-mode .cs-url-input {
+  color: #f5f5f5;
+  background-color: #333;
+}
+
+.dark-mode .cs-recording-status {
+  background-color: #2d2d30;
+  color: #f5f5f5;
+}
+
+/* Tooltip */
+.cs-tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.cs-tooltip .cs-tooltip-text {
+  visibility: hidden;
+  width: 120px;
+  background-color: #555;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -60px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.cs-tooltip .cs-tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #555 transparent transparent transparent;
+}
+
+.cs-tooltip:hover .cs-tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Browser Frame Container */
+.cs-browser-frame {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  background-color: #fff;
+  transition: all 0.3s ease;
+}
+
+/* Browser Header */
+.cs-browser-header {
+  display: flex;
+  align-items: center;
+  background-color: #f0f0f0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* Browser Controls */
+.cs-browser-controls {
+  display: flex;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.cs-browser-control {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.cs-browser-control-close {
+  background-color: #ff5f56;
+}
+
+.cs-browser-control-minimize {
+  background-color: #ffbd2e;
+}
+
+.cs-browser-control-maximize {
+  background-color: #27c93f;
+}
+
+/* Browser Address Bar */
+.cs-browser-address-bar {
+  flex: 1;
+  background-color: #ffffff;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-right: 12px;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.cs-browser-address {
+  font-size: 14px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Browser Actions */
+.cs-browser-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cs-browser-refresh {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.cs-browser-refresh:hover {
+  background-color: #ddd;
+}
+
+/* Browser Viewport */
+.cs-browser-viewport {
+  position: relative;
+  background-color: #fff;
+  overflow: hidden;
+}
+
+/* Browser Iframe */
+.cs-browser-iframe {
+  border: none;
+  display: block;
+}
+
+/* Browser Placeholder */
+.cs-browser-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background-color: #f9f9f9;
+  color: #666;
+  font-size: 16px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Loading Indicator */
+.cs-browser-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.cs-loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error Display */
+.cs-browser-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+
+.cs-error-icon {
+  font-size: 64px;
+  color: #dc3545;
+  margin-bottom: 20px;
+}
+
+.cs-error-message {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.cs-error-details {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  max-width: 80%;
+}
+
+.cs-retry-button {
+  margin-top: 20px;
+  padding: 8px 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.cs-retry-button:hover {
+  background-color: #0069d9;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 576px) {
+  .cs-browser-controls {
+    display: none;
+  }
+  
+  .cs-browser-address-bar {
+    margin-left: 0;
+  }
+  
+  .cs-browser-header {
+    padding: 6px 8px;
+  }
+}
+
+/* Dark Mode */
+.dark-mode .cs-browser-frame {
+  background-color: #252526;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cs-browser-header {
+  background-color: #1e1e1e;
+  border-bottom: 1px solid #444;
+}
+
+.dark-mode .cs-browser-address-bar {
+  background-color: #333;
+  border: 1px solid #444;
+}
+
+.dark-mode .cs-browser-address {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-browser-refresh {
+  color: #ccc;
+}
+
+.dark-mode .cs-browser-refresh:hover {
+  background-color: #444;
+}
+
+.dark-mode .cs-browser-viewport {
+  background-color: #2d2d30;
+}
+
+.dark-mode .cs-browser-placeholder {
+  background-color: #2d2d30;
+  color: #ccc;
+}
+
+.dark-mode .cs-browser-loading {
+  background-color: rgba(45, 45, 48, 0.8);
+}
+
+.dark-mode .cs-loading-spinner {
+  border: 4px solid #444;
+  border-top: 4px solid #3498db;
+}
+
+.dark-mode .cs-browser-error {
+  background-color: #2d2d30;
+}
+
+.dark-mode .cs-error-message {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-error-details {
+  color: #ccc;
+}
+
+/* Element Highlighter */
+.cs-element-highlighter {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #FF5722;
+  background-color: rgba(255, 87, 34, 0.1);
+  border-radius: 2px;
+  pointer-events: all;
+  z-index: 99999;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cs-element-highlighter:hover {
+  background-color: rgba(255, 87, 34, 0.2);
+}
+
+.cs-highlighter-info {
+  position: absolute;
+  top: -25px;
+  left: 0;
+  background-color: #FF5722;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.cs-element-highlighter:hover .cs-highlighter-info {
+  opacity: 1;
+}
+
+.cs-highlighter-tag {
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.cs-highlighter-id {
+  color: #FFECB3;
+}
+
+/* Element Details Popup */
+.cs-element-details {
+  position: absolute;
+  width: 300px;
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 100000;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+  animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cs-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #FF5722;
+  color: white;
+  padding: 8px 12px;
+}
+
+.cs-details-type {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.cs-details-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.cs-details-content {
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.cs-details-item {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.cs-details-item strong {
+  font-weight: bold;
+  margin-right: 5px;
+  color: #333;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.cs-locator-value {
+  background-color: #f8f9fa;
+  padding: 5px;
+  border-radius: 3px;
+  border-left: 3px solid #FF5722;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: auto;
+  margin-bottom: 3px;
+}
+
+.cs-locator-type {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.cs-attributes-list {
+  margin-top: 5px;
+  max-height: 100px;
+  overflow-y: auto;
+  background-color: #f8f9fa;
+  border-radius: 3px;
+  padding: 5px;
+}
+
+.cs-attribute-item {
+  margin-bottom: 3px;
+  display: flex;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.cs-attribute-key {
+  color: #0066cc;
+  margin-right: 5px;
+}
+
+.cs-attribute-value {
+  color: #333;
+}
+
+.cs-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background-color: #f5f5f5;
+  border-top: 1px solid #eee;
+  gap: 8px;
+}
+
+.cs-details-actions button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  color: white;
+  transition: background-color 0.2s;
+}
+
+.cs-action-click {
+  background-color: #007bff;
+}
+
+.cs-action-click:hover {
+  background-color: #0069d9;
+}
+
+.cs-action-input {
+  background-color: #28a745;
+}
+
+.cs-action-input:hover {
+  background-color: #218838;
+}
+
+.cs-action-select {
+  background-color: #17a2b8;
+}
+
+.cs-action-select:hover {
+  background-color: #138496;
+}
+
+.cs-action-wait {
+  background-color: #ffc107;
+  color: #333 !important;
+}
+
+.cs-action-wait:hover {
+  background-color: #e0a800;
+}
+
+.cs-action-assert {
+  background-color: #6610f2;
+}
+
+.cs-action-assert:hover {
+  background-color: #520dc2;
+}
+
+/* Dark Mode */
+.dark-mode .cs-element-details {
+  background-color: #252526;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cs-details-header {
+  background-color: #FF5722;
+  color: white;
+}
+
+.dark-mode .cs-details-content {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-details-item strong {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-locator-value {
+  background-color: #333;
+  border-left: 3px solid #FF5722;
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-locator-type {
+  color: #ccc;
+}
+
+.dark-mode .cs-attributes-list {
+  background-color: #333;
+}
+
+.dark-mode .cs-attribute-key {
+  color: #00b7ff;
+}
+
+.dark-mode .cs-attribute-value {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-details-actions {
+  background-color: #1e1e1e;
+  border-top: 1px solid #444;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .cs-element-details {
+    width: 260px;
+  }
+  
+  .cs-details-content {
+    max-height: 200px;
+  }
+}
+
+
+/* Steps List Container */
+.cs-steps-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #ffffff;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+}
+
+/* Steps List Header */
+.cs-steps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #eaeaea;
+  background-color: #f8f9fa;
+}
+
+.cs-steps-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Steps List Empty State */
+.cs-steps-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+.cs-steps-empty p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.cs-steps-empty p:first-child {
+  font-weight: 600;
+  font-size: 16px;
+  color: #444;
+  margin-bottom: 10px;
+}
+
+/* Steps List */
+.cs-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Step Item */
+.cs-step {
+  position: relative;
+  padding: 10px 15px;
+  border-bottom: 1px solid #eaeaea;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cs-step:hover {
+  background-color: #f5f5f5;
+}
+
+.cs-step.selected {
+  background-color: #e6f7ff;
+  border-left: 3px solid #1890ff;
+  padding-left: 12px;
+}
+
+/* Step Header */
+.cs-step-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.cs-step-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.cs-step-number {
+  font-weight: 600;
+  margin-right: 8px;
+  color: #444;
+}
+
+.cs-step-time {
+  font-size: 12px;
+  color: #888;
+  margin-right: 8px;
+}
+
+.cs-step-type {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background-color: #f0f0f0;
+  color: #666;
+  text-transform: lowercase;
+}
+
+/* Step content */
+.cs-step-content {
+  margin-bottom: 10px;
+}
+
+.cs-step-description {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Step Edit Mode */
+.cs-step-edit {
+  margin-top: 5px;
+}
+
+.cs-step-edit-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 5px;
+}
+
+.cs-step-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cs-step-edit-save,
+.cs-step-edit-cancel {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.cs-step-edit-save {
+  background-color: #52c41a;
+  color: white;
+}
+
+.cs-step-edit-save:hover {
+  background-color: #49ad17;
+}
+
+.cs-step-edit-cancel {
+  background-color: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  color: #333;
+}
+
+.cs-step-edit-cancel:hover {
+  background-color: #e6e6e6;
+}
+
+/* Step Actions */
+.cs-step-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.cs-step-action {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 3px;
+  background-color: #f5f5f5;
+  color: #333;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.cs-step-action:hover {
+  background-color: #e6e6e6;
+}
+
+.cs-step-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cs-step-edit-btn:hover {
+  background-color: #faad14;
+  color: white;
+}
+
+.cs-step-delete-btn:hover {
+  background-color: #ff4d4f;
+  color: white;
+}
+
+.cs-step-move-up:hover,
+.cs-step-move-down:hover {
+  background-color: #1890ff;
+  color: white;
+}
+
+/* Step Details */
+.cs-step-details {
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 3px;
+  background-color: #f9f9f9;
+  margin-top: 5px;
+  overflow: hidden;
+  animation: slideDown 0.3s;
+}
+
+@keyframes slideDown {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 400px; opacity: 1; }
+}
+
+.cs-element-info {
+  margin-bottom: 8px;
+}
+
+.cs-element-info code {
+  background-color: #f0f0f0;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-family: monospace;
+}
+
+.cs-locators {
+  margin-bottom: 8px;
+}
+
+.cs-locators code {
+  display: block;
+  background-color: #f0f0f0;
+  padding: 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.cs-additional-data {
+  margin-top: 8px;
+}
+
+.cs-additional-data pre {
+  background-color: #f0f0f0;
+  padding: 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* Dark Mode */
+.dark-mode .cs-steps-list {
+  background-color: #252526;
+}
+
+.dark-mode .cs-steps-header {
+  border-bottom: 1px solid #444;
+  background-color: #333;
+}
+
+.dark-mode .cs-steps-header h3 {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-steps-empty {
+  color: #aaa;
+}
+
+.dark-mode .cs-steps-empty p:first-child {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-step {
+  border-bottom: 1px solid #333;
+}
+
+.dark-mode .cs-step:hover {
+  background-color: #2d2d30;
+}
+
+.dark-mode .cs-step.selected {
+  background-color: #264f78;
+  border-left: 3px solid #1890ff;
+}
+
+.dark-mode .cs-step-number {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-step-time {
+  color: #aaa;
+}
+
+.dark-mode .cs-step-type {
+  background-color: #444;
+  color: #ccc;
+}
+
+.dark-mode .cs-step-description {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-step-edit-input {
+  background-color: #333;
+  border: 1px solid #555;
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-step-edit-cancel {
+  background-color: #444;
+  border: 1px solid #555;
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-step-edit-cancel:hover {
+  background-color: #555;
+}
+
+.dark-mode .cs-step-action {
+  background-color: #444;
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-step-action:hover {
+  background-color: #555;
+}
+
+.dark-mode .cs-step-details {
+  background-color: #333;
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-element-info code,
+.dark-mode .cs-locators code,
+.dark-mode .cs-additional-data pre {
+  background-color: #2d2d30;
+  color: #e0e0e0;
+}
+
+/* Resizable List */
+.cs-resizable-list {
+  position: relative;
+}
+
+.cs-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background-color: transparent;
+  cursor: ns-resize;
+  transition: background-color 0.2s;
+}
+
+.cs-resize-handle:hover {
+  background-color: rgba(24, 144, 255, 0.3);
+}
+
+.cs-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 2px;
+  background-color: #ddd;
+  border-radius: 2px;
+}
+
+.dark-mode .cs-resize-handle::before {
+  background-color: #666;
+}
+
+
+/* Action Toolbar Container */
+.cs-action-toolbar {
+  display: flex;
+  flex-direction: column;
+  background-color: #fafafa;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Action Buttons Container */
+.cs-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+}
+
+/* Action Button */
+.cs-action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  min-width: 60px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.cs-action-button:hover {
+  background-color: #f5f5f5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.cs-action-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.cs-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f5f5f5;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Action Icon */
+.cs-action-icon {
+  font-size: 20px;
+  margin-bottom: 5px;
+}
+
+/* Action Label */
+.cs-action-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  text-align: center;
+}
+
+/* Modal Overlay */
+.cs-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal Container */
+.cs-modal {
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Modal Header */
+.cs-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #eaeaea;
+  background-color: #f8f9fa;
+}
+
+.cs-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.cs-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+}
+
+.cs-modal-close:hover {
+  color: #333;
+}
+
+/* Modal Content */
+.cs-modal-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Modal Footer */
+.cs-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 15px 20px;
+  border-top: 1px solid #eaeaea;
+  background-color: #f8f9fa;
+  gap: 10px;
+}
+
+/* Modal Buttons */
+.cs-modal-cancel,
+.cs-modal-save {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cs-modal-cancel {
+  background-color: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  color: #333;
+}
+
+.cs-modal-cancel:hover {
+  background-color: #e6e6e6;
+}
+
+.cs-modal-save {
+  background-color: #1890ff;
+  color: white;
+}
+
+.cs-modal-save:hover {
+  background-color: #0e80e5;
+}
+
+/* Form Groups */
+.cs-form-group {
+  margin-bottom: 15px;
+}
+
+.cs-form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  font-size: 14px;
+  color: #333;
+}
+
+.cs-form-control {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background-color: white;
+  transition: border-color 0.2s;
+}
+
+.cs-form-control:focus {
+  outline: none;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.cs-form-text {
+  font-size: 12px;
+  color: #888;
+  margin-top: 5px;
+  display: block;
+}
+
+/* Textarea for code */
+.cs-code-textarea {
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  background-color: #f9f9f9;
+}
+
+/* Checkbox and Radio Groups */
+.cs-checkbox-group,
+.cs-radio-group {
+  margin-top: 5px;
+}
+
+.cs-checkbox,
+.cs-radio {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.cs-checkbox input[type="checkbox"],
+.cs-radio input[type="radio"] {
+  margin-right: 8px;
+}
+
+.cs-checkbox label,
+.cs-radio label {
+  margin-bottom: 0;
+  font-weight: normal;
+  font-size: 14px;
+}
+
+/* Dark Mode */
+.dark-mode .cs-action-toolbar {
+  background-color: #2d2d30;
+}
+
+.dark-mode .cs-action-button {
+  background-color: #3c3c3c;
+  border: 1px solid #444;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.dark-mode .cs-action-button:hover {
+  background-color: #444;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .cs-action-label {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-modal {
+  background-color: #252526;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cs-modal-header {
+  background-color: #1e1e1e;
+  border-bottom: 1px solid #444;
+}
+
+.dark-mode .cs-modal-header h3 {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-modal-close {
+  color: #ccc;
+}
+
+.dark-mode .cs-modal-close:hover {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-modal-footer {
+  background-color: #1e1e1e;
+  border-top: 1px solid #444;
+}
+
+.dark-mode .cs-modal-cancel {
+  background-color: #444;
+  border: 1px solid #555;
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-modal-cancel:hover {
+  background-color: #555;
+}
+
+.dark-mode .cs-form-group label {
+  color: #e0e0e0;
+}
+
+.dark-mode .cs-form-control {
+  background-color: #333;
+  border: 1px solid #555;
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-form-text {
+  color: #aaa;
+}
+
+.dark-mode .cs-code-textarea {
+  background-color: #2d2d30;
+  color: #f5f5f5;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 576px) {
+  .cs-modal {
+    width: 95%;
+  }
+  
+  .cs-action-buttons {
+    justify-content: center;
+  }
+  
+  .cs-action-button {
+    min-width: 70px;
+  }
+}
+
+
+
+/* src/assets/styles/browser-frame.css */
+
+.cs-browser-frame {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  height: 100%;
+  background-color: #fff;
+}
+
+.cs-browser-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.cs-browser-controls {
+  display: flex;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.cs-browser-control {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.cs-browser-control-close {
+  background-color: #ff5f57;
+}
+
+.cs-browser-control-minimize {
+  background-color: #febc2e;
+}
+
+.cs-browser-control-expand {
+  background-color: #28c840;
+}
+
+.cs-browser-address-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background-color: #ffffff;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #333;
+}
+
+.cs-browser-address-icon {
+  margin-right: 8px;
+  color: #666;
+}
+
+.cs-browser-address-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-browser-refresh-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin-left: 8px;
+}
+
+.cs-browser-refresh-button:hover {
+  color: #333;
+}
+
+.cs-browser-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.cs-browser-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.cs-browser-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.cs-browser-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #1890ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Dark Mode */
+.dark-mode .cs-browser-frame {
+  border-color: #444;
+  background-color: #252526;
+}
+
+.dark-mode .cs-browser-toolbar {
+  background-color: #1e1e1e;
+  border-bottom-color: #444;
+}
+
+.dark-mode .cs-browser-address-bar {
+  background-color: #333;
+  border-color: #555;
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-browser-loading-overlay {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+.dark-mode .cs-browser-loading-spinner {
+  border-color: #333;
+  border-top-color: #1890ff;
+}
+
+
+/* src/assets/styles/element-highlighter.css */
+
+.cs-element-highlighter {
+  position: absolute;
+  pointer-events: none;
+  z-index: 9999;
+  transition: all 0.2s ease;
+}
+
+.cs-highlight-box {
+  position: absolute;
+  border: 2px solid #1890ff;
+  background-color: rgba(24, 144, 255, 0.1);
+  box-shadow: 0 0 0 1px #1890ff;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.cs-highlight-label {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  background-color: #1890ff;
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 2px 2px 0 0;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-highlight-actions {
+  position: absolute;
+  display: flex;
+  top: -24px;
+  right: 0;
+  background-color: #1890ff;
+  border-radius: 2px 2px 0 0;
+}
+
+.cs-highlight-action {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cs-highlight-action:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.cs-highlight-selector {
+  position: absolute;
+  bottom: -24px;
+  left: 0;
+  background-color: #333;
+  color: #f5f5f5;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 0 0 2px 2px;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: monospace;
+}
+
+/* Hover state */
+.cs-highlight-box.hover {
+  border-color: #52c41a;
+  background-color: rgba(82, 196, 26, 0.1);
+}
+
+.cs-highlight-box.hover + .cs-highlight-label,
+.cs-highlight-box.hover + .cs-highlight-actions {
+  background-color: #52c41a;
+}
+
+/* Selected state */
+.cs-highlight-box.selected {
+  border-color: #fa8c16;
+  background-color: rgba(250, 140, 22, 0.1);
+}
+
+.cs-highlight-box.selected + .cs-highlight-label,
+.cs-highlight-box.selected + .cs-highlight-actions {
+  background-color: #fa8c16;
+}
+
+/* Dark mode */
+.dark-mode .cs-highlight-box {
+  border-color: #177ddc;
+  background-color: rgba(23, 125, 220, 0.2);
+}
+
+.dark-mode .cs-highlight-label,
+.dark-mode .cs-highlight-actions {
+  background-color: #177ddc;
+}
+
+.dark-mode .cs-highlight-selector {
+  background-color: #232323;
+}
+
+
+/* src/assets/styles/steps-list.css */
+
+.cs-steps-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #fafafa;
+  border-left: 1px solid #e8e8e8;
+}
+
+.cs-steps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8e8e8;
+  background-color: #f5f5f5;
+}
+
+.cs-steps-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.cs-steps-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cs-steps-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  font-size: 14px;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.cs-steps-action:hover {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.cs-steps-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.cs-step-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  background-color: white;
+  border: 1px solid #e8e8e8;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.cs-step-item:hover {
+  background-color: #f0f5ff;
+  border-color: #d6e4ff;
+}
+
+.cs-step-item.selected {
+  background-color: #e6f7ff;
+  border-color: #91d5ff;
+}
+
+.cs-step-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #eee;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.cs-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.cs-step-action {
+  font-weight: 500;
+  font-size: 14px;
+  color: #333;
+  margin: 0 0 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-step-target {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-step-value {
+  font-size: 12px;
+  color: #888;
+  margin: 2px 0 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-step-controls {
+  display: flex;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.cs-step-item:hover .cs-step-controls {
+  opacity: 1;
+}
+
+.cs-step-control {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #999;
+  padding: 4px;
+  font-size: 14px;
+}
+
+.cs-step-control:hover {
+  color: #333;
+}
+
+.cs-steps-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #999;
+}
+
+.cs-steps-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #d9d9d9;
+}
+
+.cs-steps-empty-text {
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.cs-steps-empty-button {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.cs-steps-empty-button:hover {
+  background-color: #0e80e5;
+}
+
+/* Dark Mode */
+.dark-mode .cs-steps-list {
+  background-color: #1e1e1e;
+  border-left-color: #444;
+}
+
+.dark-mode .cs-steps-header {
+  background-color: #252526;
+  border-bottom-color: #444;
+}
+
+.dark-mode .cs-steps-title {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-steps-action:hover {
+  background-color: #333;
+}
+
+.dark-mode .cs-step-item {
+  background-color: #252526;
+  border-color: #444;
+}
+
+.dark-mode .cs-step-item:hover {
+  background-color: #303030;
+  border-color: #555;
+}
+
+.dark-mode .cs-step-item.selected {
+  background-color: #304156;
+  border-color: #1890ff;
+}
+
+.dark-mode .cs-step-index {
+  background-color: #333;
+  color: #bbb;
+}
+
+.dark-mode .cs-step-action {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-step-target {
+  color: #bbb;
+}
+
+.dark-mode .cs-step-value {
+  color: #999;
+}
+
+.dark-mode .cs-steps-empty {
+  color: #777;
+}
+
+.dark-mode .cs-steps-empty-icon {
+  color: #555;
+}
+
+
+
+/* src/assets/styles/action-toolbar.css */
+
+.cs-action-toolbar {
+  display: flex;
+  padding: 12px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #e8e8e8;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cs-action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: white;
+  border: 1px solid #d9d9d9;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 72px;
+  height: 72px;
+}
+
+.cs-action-button:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.cs-action-button.active {
+  background-color: #e6f7ff;
+  border-color: #91d5ff;
+  color: #1890ff;
+}
+
+.cs-action-icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.cs-action-label {
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.cs-action-separator {
+  width: 1px;
+  height: 72px;
+  background-color: #e8e8e8;
+  margin: 0 8px;
+}
+
+.cs-action-dropdown {
+  position: relative;
+}
+
+.cs-action-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px 0;
+  margin-top: 4px;
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: none;
+}
+
+.cs-action-dropdown.open .cs-action-menu {
+  display: block;
+}
+
+.cs-action-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cs-action-menu-item:hover {
+  background-color: #f5f5f5;
+}
+
+.cs-action-menu-icon {
+  margin-right: 8px;
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+
+.cs-action-menu-label {
+  font-size: 14px;
+}
+
+.cs-action-tooltip {
+  position: absolute;
+  background-color: #333;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 1000;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.cs-action-button:hover .cs-action-tooltip {
+  opacity: 1;
+}
+
+/* Dark Mode */
+.dark-mode .cs-action-toolbar {
+  background-color: #1e1e1e;
+  border-bottom-color: #444;
+}
+
+.dark-mode .cs-action-button {
+  background-color: #252526;
+  border-color: #555;
+  color: #bbb;
+}
+
+.dark-mode .cs-action-button:hover {
+  border-color: #177ddc;
+  color: #177ddc;
+}
+
+.dark-mode .cs-action-button.active {
+  background-color: #304156;
+  border-color: #177ddc;
+  color: #177ddc;
+}
+
+.dark-mode .cs-action-separator {
+  background-color: #444;
+}
+
+.dark-mode .cs-action-menu {
+  background-color: #252526;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cs-action-menu-item:hover {
+  background-color: #303030;
+}
+
+.dark-mode .cs-action-tooltip {
+  background-color: #000;
+}
+
+
+/* src/assets/styles/recorder.css */
+
+.cs-recorder {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #f0f2f5;
+}
+
+.cs-recorder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e8e8e8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.cs-recorder-logo {
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.cs-recorder-logo-icon {
+  margin-right: 8px;
+}
+
+.cs-recorder-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cs-recorder-button {
+  background: none;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.cs-recorder-button:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.cs-recorder-button-icon {
+  margin-right: 6px;
+}
+
+.cs-recorder-button-primary {
+  background-color: #1890ff;
+  color: white;
+  border-color: #1890ff;
+}
+
+.cs-recorder-button-primary:hover {
+  background-color: #0e80e5;
+  border-color: #0e80e5;
+  color: white;
+}
+
+.cs-recorder-button-danger {
+  color: #ff4d4f;
+  border-color: #ff4d4f;
+}
+
+.cs-recorder-button-danger:hover {
+  background-color: #fff1f0;
+}
+
+.cs-recorder-status {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #666;
+}
+
+.cs-recorder-status-icon {
+  margin-right: 6px;
+}
+
+.cs-recorder-status.recording {
+  color: #f5222d;
+}
+
+.cs-recorder-status.paused {
+  color: #faad14;
+}
+
+.cs-recorder-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.cs-recorder-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.cs-recorder-sidebar {
+  width: 350px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e8e8e8;
+  background-color: #fafafa;
+}
+
+.cs-recorder-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: #ffffff;
+  border-top: 1px solid #e8e8e8;
+}
+
+.cs-recorder-info {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: #666;
+}
+
+.cs-recorder-info-item {
+  display: flex;
+  align-items: center;
+  margin-right: 16px;
+}
+
+.cs-recorder-info-icon {
+  margin-right: 6px;
+}
+
+.cs-recorder-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cs-recorder-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cs-recorder-modal {
+  background-color: white;
+  border-radius: 8px;
+  width: 500px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.cs-recorder-modal-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cs-recorder-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.cs-recorder-modal-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #999;
+}
+
+.cs-recorder-modal-content {
+  padding: 24px;
+}
+
+.cs-recorder-modal-footer {
+  padding: 12px 24px;
+  border-top: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Dark Mode */
+.dark-mode .cs-recorder {
+  background-color: #141414;
+}
+
+.dark-mode .cs-recorder-header {
+  background-color: #1e1e1e;
+  border-bottom-color: #444;
+}
+
+.dark-mode .cs-recorder-logo {
+  color: #177ddc;
+}
+
+.dark-mode .cs-recorder-button {
+  border-color: #434343;
+  color: #bbb;
+}
+
+.dark-mode .cs-recorder-button:hover {
+  border-color: #177ddc;
+  color: #177ddc;
+}
+
+.dark-mode .cs-recorder-button-primary {
+  background-color: #177ddc;
+  color: white;
+  border-color: #177ddc;
+}
+
+.dark-mode .cs-recorder-button-primary:hover {
+  background-color: #0e6bb3;
+  border-color: #0e6bb3;
+}
+
+.dark-mode .cs-recorder-status {
+  color: #bbb;
+}
+
+.dark-mode .cs-recorder-sidebar {
+  border-left-color: #444;
+  background-color: #1e1e1e;
+}
+
+.dark-mode .cs-recorder-footer {
+  background-color: #1e1e1e;
+  border-top-color: #444;
+}
+
+.dark-mode .cs-recorder-info {
+  color: #bbb;
+}
+
+.dark-mode .cs-recorder-modal {
+  background-color: #252526;
+}
+
+.dark-mode .cs-recorder-modal-header {
+  border-bottom-color: #444;
+}
+
+.dark-mode .cs-recorder-modal-title {
+  color: #f5f5f5;
+}
+
+.dark-mode .cs-recorder-modal-footer {
+  border-top-color: #444;
+}
+
+
